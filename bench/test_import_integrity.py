@@ -1,4 +1,5 @@
 import sys
+import json
 from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
@@ -22,6 +23,16 @@ def score(parts=1, notes=1):
 
 
 class IntegrityTests(unittest.TestCase):
+    def test_forward_repeat_before_notes_is_left_side(self):
+        root = ET.fromstring('<score-partwise><part id="P1"><measure><attributes/><barline location="right"><repeat direction="forward"/></barline><note><rest/></note></measure></part></score-partwise>')
+        self.assertEqual(len(pipeline._repair_forward_repeat_locations(root)), 1)
+        self.assertEqual(root.find('.//barline').get('location'), 'left')
+
+    def test_right_side_repeat_after_notes_is_not_reinterpreted(self):
+        root = ET.fromstring('<score-partwise><part id="P1"><measure><note><rest/></note><barline location="right"><repeat direction="forward"/></barline></measure></part></score-partwise>')
+        self.assertEqual(pipeline._repair_forward_repeat_locations(root), [])
+        self.assertEqual(root.find('.//barline').get('location'), 'right')
+
     def test_multiple_attributes_are_read_in_order(self):
         root = ET.fromstring('<score-partwise><part id="P1"><measure number="1">'
           '<attributes><divisions>2</divisions></attributes>'
@@ -127,6 +138,17 @@ class IntegrityTests(unittest.TestCase):
         ET.SubElement(m.find('note'),'pitch')
         with self.assertRaisesRegex(ValueError,'non-rest'):
             pipeline.repair_rest_count(root,'rest-p0-100-100',2)
+
+    def test_multirest_review_candidates_follow_renumbered_measures(self):
+        root = self.rest_score()
+        fields = ET.SubElement(ET.SubElement(root, 'identification'), 'miscellaneous')
+        field = ET.SubElement(fields, 'miscellaneous-field', name='conversion-audit')
+        field.text = json.dumps({'tupletCandidates': [{'part': 'P1', 'measure': 4, 'number': '4'}]})
+        text = pipeline.repair_rest_counts_xml(ET.tostring(root, encoding='unicode'),
+            json.dumps([{'sourceId': 'rest-p0-100-100', 'count': 11}]))
+        result = ET.fromstring(text)
+        entry = json.loads(result.findtext('.//miscellaneous-field[@name="conversion-audit"]'))['tupletCandidates'][0]
+        self.assertEqual((entry['measure'], entry['number']), (12, '12'))
 
     def test_unmarked_page_continues_known_meter(self):
         a=ET.fromstring('<score-partwise><part id="P1"><measure number="1"><attributes><divisions>2</divisions><time><beats>6</beats><beat-type>8</beat-type></time></attributes><note id="n1-p0-100-100"><rest/><duration>6</duration></note></measure></part></score-partwise>')

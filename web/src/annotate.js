@@ -26,31 +26,39 @@ const GLYPHS = {
 const UNITS = { q: 'quarter', h: 'half', e: 'eighth' }
 // "q = 156" (the note glyph mapped above), "(q. = ca. 60)", and what OCR makes of the
 // note: "J=156", "d = 156" - there the unit is unknown and taken as a quarter.
-const METRONOME = /(?:\b([qhe])(\.?))?\s*=\s*(?:c(?:irc)?a\.?\s*)?(\d{2,3})/
-const TEMPO_WORDS = {
-  grave: 40, largo: 50, larghetto: 60, lento: 54, adagio: 66, andante: 84, andantino: 90, moderato: 108,
-  allegretto: 116, allegro: 132, vivace: 160, presto: 176, prestissimo: 200,
-}
-const TEMPO_WORD = new RegExp(`\\b(${Object.keys(TEMPO_WORDS).join('|')})\\b`, 'i')
+const METRONOME = /(?:\b([qhe])(\.?))?\s*=\s*(?:c(?:irc)?a\.?\s*)?(\d{2,3})(?!\d)/
+const TEMPO_WORDS = ['grave', 'largo', 'larghetto', 'lento', 'adagio', 'andante', 'andantino', 'moderato',
+  'allegretto', 'allegro', 'vivace', 'presto', 'prestissimo']
+const TEMPO_WORD = new RegExp(`\\b(${TEMPO_WORDS.join('|')})\\b`, 'i')
 
-/** The tempo a line of text states, if any: {tokens, x, bpm, unit, dotted, words}. */
-function readTempo(line) {
-  const number = line.map((t) => METRONOME.exec(t.str))
-  // OCR may split "J = 156" into pieces: then the whole line has to be read as one.
-  const joined = number.some(Boolean) ? null : METRONOME.exec(line.map((t) => t.str).join(' '))
-  const word = line.find((t) => TEMPO_WORD.test(t.str))
-  const m = number.find(Boolean) ?? joined
-  if (!m && !word) return null
-  const tokens = joined ? line : line.filter((t, i) => number[i] || t === word)
-  return {
-    tokens,
-    x: Math.min(...tokens.map((t) => t.x)),
-    bpm: m ? +m[3] : TEMPO_WORDS[TEMPO_WORD.exec(word.str)[1].toLowerCase()],
-    unit: UNITS[m?.[1]] ?? 'quarter',
-    dotted: !!m?.[2],
-    // Words like "Presto ma dolce" are kept; a bare metronome mark needs none.
-    words: word?.str.replace(/\(?\s*\S?\.?\s*=.*$/, '').trim(),
+/** Every tempo on a line, keeping the source tokens for each mark separate.
+ * A word such as Allegro does not specify an exact numeric BPM.
+ */
+export function readTempos(line) {
+  let text = ''
+  const spans = line.map(token => {
+    if (text) text += ' '
+    const start = text.length
+    text += token.str
+    return { token, start, end: text.length }
+  })
+  const found = []
+  for (const match of text.matchAll(new RegExp(METRONOME.source, 'g'))) {
+    if (+match[3] <= 0) continue
+    const matching = spans.filter(span => span.end > match.index && span.start < match.index + match[0].length)
+    const covered = matching.map(span => span.token), first = matching[0]
+    const x = first.token.x + first.token.w * Math.max(0, match.index-first.start) / first.token.str.length
+    const word = line.filter(token => TEMPO_WORD.test(token.str) && token.x <= x
+      && x-token.x-token.w < 3*token.h).at(-1)
+    found.push({ tokens: [...new Set([...covered, ...(word ? [word] : [])])], x,
+      bpm: +match[3], unit: UNITS[match[1]] ?? 'quarter', dotted: !!match[2],
+      words: word?.str.replace(/\(?\s*\S?\.?\s*=.*$/, '').trim() })
   }
+  if (!found.length) {
+    const word = line.find(token => TEMPO_WORD.test(token.str))
+    if (word) found.push({ tokens: [word], x: word.x, bpm: null, unit: 'quarter', dotted: false, words: word.str })
+  }
+  return found
 }
 
 /** Join the pieces a PDF splits text into ("C" "sus" "/F") and drop music-font glyphs. */
@@ -195,13 +203,19 @@ export function annotate(doc, text) {
       const nearerBelow = below && (!above || below[0] < above[0])
 
       // A tempo stands above its staff, perhaps beside other text on the same line.
-      const tempo = nearerBelow && below[0] < 12 * unit(below[1]) && readTempo(line)
+      const tempos = nearerBelow && below[0] < 12 * unit(below[1]) ? readTempos(line) : []
       const anchors = byStaff.get(`${page}/${below?.[1]}`) ?? []
-      if (tempo && anchors.length) {
-        const { anchor } = under(anchors, tempo.x, unit(below[1]))
-        anchor.el.parentNode.insertBefore(tempoMark(doc, tempo), anchor.el)
-        added.tempo++
-        line.splice(0, line.length, ...line.filter((t) => !tempo.tokens.includes(t)))
+      if (tempos.length && anchors.length) {
+        const used = new Set()
+        for (const tempo of tempos) {
+          // Tempo text often starts before its onset (before a changed meter).
+          // Chord placement's "last onset to the left" would attach it to the old bar.
+          const anchor = anchors.reduce((best, current) => Math.abs(current.x-tempo.x) < Math.abs(best.x-tempo.x) ? current : best)
+          anchor.el.parentNode.insertBefore(tempoMark(doc, tempo), anchor.el)
+          added.tempo++
+          tempo.tokens.forEach(token => used.add(token))
+        }
+        line.splice(0, line.length, ...line.filter(token => !used.has(token)))
         if (!line.length) continue
       }
 

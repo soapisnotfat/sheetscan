@@ -44,7 +44,7 @@ async function scan(files) {
   readText() // OCR runs beside the recognition
   // Copies go to the worker; the originals stay here for the side-by-side view.
   started = performance.now()
-  worker.postMessage({ pages: pages.map((p) => p.png), port: bridgePort }, bridgePort ? [bridgePort] : [])
+  worker.postMessage({ pages: pages.map((p) => p.png), port: bridgePort, printedTuplets: query.has('printed-tuplets') }, bridgePort ? [bridgePort] : [])
   bridgePort = null // handed over with the first scan
 }
 

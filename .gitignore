@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dev-samples/
+accuracy-local/
 __pycache__/
 .claude/
 # copied in by web/tools/pack_assets.py

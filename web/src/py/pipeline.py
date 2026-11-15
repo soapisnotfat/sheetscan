@@ -15,6 +15,7 @@ from fractions import Fraction
 import cv2
 import numpy as np
 from score_numbers import read_meters, rest_number_box
+from printed_tuplets import read_tuplet_marks, tuplet_candidates, apply_tuplet
 
 # homr imports these at module level but only uses them for downloads, PDF
 # rendering and title OCR, none of which this pipeline calls.
@@ -278,9 +279,12 @@ def repair_rest_counts_xml(text, changes_json):
     for change in json.loads(changes_json):
         fixed = repair_rest_count(score, change['sourceId'], int(change['count']))
         delta = fixed['count']-fixed['previous']
-        for entry in audit.get('printedMeters', []) + audit.get('changes', []) + audit.get('conflicts', []):
+        for entry in (audit.get('printedMeters', []) + audit.get('changes', []) + audit.get('conflicts', [])
+                      + audit.get('repeatLocationChanges', []) + audit.get('tupletCandidates', []) + audit.get('tupletsApplied', [])):
             if entry.get('part') == fixed['part'] and entry.get('measure', 0) >= fixed['startMeasure']+fixed['previous']:
                 entry['measure'] += delta
+                if 'number' in entry:
+                    entry['number'] = str(entry['measure'])
         audit.setdefault('restChanges', []).append(fixed)
         for source in sources:
             if source['sourceId'] == change['sourceId']:
@@ -567,6 +571,7 @@ def _read_page(path):
                 rest_changes.append(repair_rest_count(xml, note.get('id'), reading['value']))
                 source['count'] = reading['value']
     _page_sources.append({'page': _page, 'score': xml, 'layout': boxes, 'meters': meters,
+                          'tuplets': read_tuplet_marks(original, boxes),
                           'rests': rests, 'restChanges': rest_changes,
                           'inferredFirst': [_first_time_is_inferred(voice) for voice in voices]})
     return xml, boxes
@@ -591,6 +596,27 @@ def _order_children(score):
             element[:] = sorted(element, key=lambda child: rank.get(child.tag, len(rank)))  # stable
 
 
+def _repair_forward_repeat_locations(score):
+    """homr emits repeatStart before the new bar's notes but labels it right.
+
+    Correct that contradictory location only when no notes precede the mark.
+    A right-side mark after notes is not moved by this repair.
+    """
+    changes = []
+    for part in score.findall('part'):
+        for index, measure in enumerate(part.findall('measure'), 1):
+            children = list(measure)
+            for position, barline in enumerate(children):
+                if (barline.tag == 'barline' and barline.get('location') == 'right'
+                        and barline.find('repeat[@direction="forward"]') is not None
+                        and barline.find('repeat[@direction="backward"]') is None
+                        and not any(child.tag == 'note' for child in children[:position])
+                        and any(child.tag == 'note' for child in children[position+1:])):
+                    barline.set('location', 'left')
+                    changes.append({'part': part.get('id'), 'measure': index, 'kind': 'forward-repeat-location'})
+    return changes
+
+
 def _give_every_staff_a_clef(score):
     """A staff that is silent at first (a piece opening on single-staff lines before the
     piano enters) gets its first clef only where it starts: put that clef at the beginning."""
@@ -608,7 +634,7 @@ def _give_every_staff_a_clef(score):
                 first.insert(list(first).index(last[-1]) + 1 if last else len(first), copy)
 
 
-def scan(paths, progress=lambda done, total: None, number_reader=None):
+def scan(paths, progress=lambda done, total: None, number_reader=None, printed_tuplets=False):
     """Recognise each page image; pages without music are skipped. Returns MusicXML text.
     The staff boxes of every page ride along as the miscellaneous field "staff-layout"."""
     global _page, _page_sources, _number_reader
@@ -631,6 +657,10 @@ def scan(paths, progress=lambda done, total: None, number_reader=None):
     _number_reader = None
     merged = _merge_pages(scores)
     numeric_audit = _repair_meters(merged, _page_sources)
+    numeric_audit['repeatLocationChanges'] = _repair_forward_repeat_locations(merged)
+    candidates = tuplet_candidates(merged, _page_sources)
+    numeric_audit['tupletCandidates'] = candidates
+    numeric_audit['tupletsApplied'] = [apply_tuplet(merged, candidate) for candidate in candidates] if printed_tuplets else []
     numeric_audit['restChanges'] = [change for source in _page_sources for change in source['restChanges']]
     _give_every_staff_a_clef(merged)
     _order_children(merged)
@@ -650,3 +680,8 @@ def scan(paths, progress=lambda done, total: None, number_reader=None):
     field = ET.SubElement(miscellaneous, 'miscellaneous-field', name='conversion-audit')
     field.text = json.dumps(numeric_audit)
     return ET.tostring(merged, encoding="unicode", xml_declaration=True)
+
+
+def scan_with_tuplets(paths, progress=lambda done, total: None):
+    """Research policy shared by native and browser tests; opt-in, not a release claim."""
+    return scan(paths, progress, printed_tuplets=True)

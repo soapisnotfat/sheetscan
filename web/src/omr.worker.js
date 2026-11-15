@@ -10,6 +10,8 @@ import * as networks from './ort.js'
 import ortShim from './py/ort_shim.py?raw'
 import pipeline from './py/pipeline.py?raw'
 import scoreNumbers from './py/score_numbers.py?raw'
+import printedTuplets from './py/printed_tuplets.py?raw'
+import tupletTemplates from './py/tuplet_templates.json?raw'
 
 const PYODIDE = 'https://cdn.jsdelivr.net/pyodide/v314.0.7/full/'
 const BASE = new URL('..', import.meta.url).href // this file is served one folder below the app
@@ -65,18 +67,21 @@ function init(port) {
     pyodide.FS.writeFile('/lib/python3.14/site-packages/onnxruntime.py', ortShim)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/pipeline.py', pipeline)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/score_numbers.py', scoreNumbers)
+    pyodide.FS.writeFile('/lib/python3.14/site-packages/printed_tuplets.py', printedTuplets)
+    pyodide.FS.writeFile('/lib/python3.14/site-packages/tuplet_templates.json', tupletTemplates)
     pyodide.FS.mkdirTree('/work')
     post('status', { text: 'Starting recognition engine…' })
     const scan = pyodide.runPython('import pipeline; pipeline.scan')
     const { names, run } = await bridge
     Object.assign(self, { ortNames: names, ortRun: run })
-    return { pyodide, scan, jspi }
+    return { pyodide, scan, scanTuplets: pyodide.runPython('pipeline.scan_with_tuplets'), jspi }
   })())
 }
 
 self.onmessage = async ({ data }) => {
   try {
-    const { pyodide, scan, jspi } = await init(data.port)
+    const { pyodide, scan: standardScan, scanTuplets, jspi } = await init(data.port)
+    const scan = data.printedTuplets ? scanTuplets : standardScan
     if (data.op === 'repair-rests') {
       const repair = pyodide.runPython('pipeline.repair_rest_counts_xml')
       post('rests-repaired', { xml: repair(data.xml, JSON.stringify(data.changes)) })
