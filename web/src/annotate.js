@@ -112,7 +112,9 @@ const place = (id) => {
 export function annotate(doc, text) {
   const field = doc.querySelector('miscellaneous-field[name="staff-layout"]')
   const layout = JSON.parse(field?.textContent ?? '[]')
-  field?.parentNode.remove()
+  const container = field?.parentNode
+  field?.remove()
+  if (container && !container.children.length) container.remove()
   const added = { title: '', lyrics: 0, chords: 0, tempo: 0 }
 
   // Every note and rest with a known place, filed under the staff it lies closest to.

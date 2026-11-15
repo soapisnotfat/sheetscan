@@ -9,6 +9,7 @@
 import * as networks from './ort.js'
 import ortShim from './py/ort_shim.py?raw'
 import pipeline from './py/pipeline.py?raw'
+import scoreNumbers from './py/score_numbers.py?raw'
 
 const PYODIDE = 'https://cdn.jsdelivr.net/pyodide/v314.0.7/full/'
 const BASE = new URL('..', import.meta.url).href // this file is served one folder below the app
@@ -63,6 +64,7 @@ function init(port) {
     pyodide.unpackArchive(await networks.cached(`${BASE}homr.zip`), 'zip', { extractDir: '/lib/python3.14/site-packages' })
     pyodide.FS.writeFile('/lib/python3.14/site-packages/onnxruntime.py', ortShim)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/pipeline.py', pipeline)
+    pyodide.FS.writeFile('/lib/python3.14/site-packages/score_numbers.py', scoreNumbers)
     pyodide.FS.mkdirTree('/work')
     post('status', { text: 'Starting recognition engine…' })
     const scan = pyodide.runPython('import pipeline; pipeline.scan')
@@ -75,6 +77,11 @@ function init(port) {
 self.onmessage = async ({ data }) => {
   try {
     const { pyodide, scan, jspi } = await init(data.port)
+    if (data.op === 'repair-rests') {
+      const repair = pyodide.runPython('pipeline.repair_rest_counts_xml')
+      post('rests-repaired', { xml: repair(data.xml, JSON.stringify(data.changes)) })
+      return
+    }
     const paths = data.pages.map((bytes, i) => {
       const path = `/work/p${i + 1}.png`
       pyodide.FS.writeFile(path, new Uint8Array(bytes))

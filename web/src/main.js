@@ -1,6 +1,6 @@
 import { annotate, tokens } from './annotate.js'
 import { loadPages } from './input.js'
-import { ocr } from './ocr.js'
+import { ocr, readNumber } from './ocr.js'
 import { Player } from './player.js'
 import { Score, verovio } from './score.js'
 
@@ -23,6 +23,7 @@ let score = null
 let selected = null // id of the selected note
 let midi = '' // base64, kept current for the MIDI download
 let started = 0 // when the current scan began
+let restRepair = null
 
 // For tests and the curious: the current score from the console.
 window.sheetscan = { get xml() { return score?.xml }, seconds: null, bridge: null }
@@ -71,7 +72,10 @@ const DETAILS = [
 ]
 
 worker.onmessage = async ({ data }) => {
-  if (data.type === 'status') {
+  if (data.type === 'rests-repaired') {
+    restRepair?.resolve(data.xml)
+    restRepair = null
+  } else if (data.type === 'status') {
     progress(data.text, data.done, data.total)
     if (/Reading page/.test(data.text)) {
       reading = { page: data.done, pages: data.total, staves: 1 }
@@ -85,10 +89,14 @@ worker.onmessage = async ({ data }) => {
       $('detail').textContent = text
       $('bar').style.width = `${(100 * (reading.page + Math.min(share, 1))) / reading.pages}%`
     }
-  } else if (data.type === 'error') fail(data.text)
+  } else if (data.type === 'error') {
+    restRepair?.reject(new Error(data.text))
+    restRepair = null
+    fail(data.text)
+  }
   else if (data.type === 'result') {
     Object.assign(window.sheetscan, { seconds: Math.round((performance.now() - started) / 100) / 10, bridge: data.bridge })
-    await open(data.xml)
+    try { await open(data.xml) } catch (error) { fail(error.message) }
   }
 }
 
@@ -99,6 +107,20 @@ function readText() {
 }
 
 async function open(xml) {
+  const parsed = new DOMParser().parseFromString(xml, 'application/xml')
+  const sources = JSON.parse(parsed.querySelector('miscellaneous-field[name="numeric-sources"]')?.textContent ?? '[]')
+  const changes = []
+  if (sources.length) progress('Checking printed rest counts…')
+  for (const source of sources) {
+    if (!source.numberBox || !pages[source.page]) continue
+    const reading = await readNumber(pages[source.page], source.numberBox)
+    if (reading && reading.value !== source.count)
+      changes.push({ sourceId: source.sourceId, count: reading.value, reading })
+  }
+  if (changes.length) xml = await new Promise((resolve, reject) => {
+    restRepair = { resolve, reject }
+    worker.postMessage({ op: 'repair-rests', xml, changes })
+  })
   score = new Score(xml)
   selected = null
   progress('Reading text…', 1, 1)

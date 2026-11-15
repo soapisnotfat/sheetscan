@@ -4,15 +4,17 @@ Recognition is homr (staff detection + transformer); this module drives it page 
 page and adds what homr lacks: octave clefs.
 """
 import itertools
+import copy
 import json
-import os
+import re
 import sys
-import tempfile
 import types
 import xml.etree.ElementTree as ET
+from fractions import Fraction
 
 import cv2
 import numpy as np
+from score_numbers import read_meters, rest_number_box
 
 # homr imports these at module level but only uses them for downloads, PDF
 # rendering and title OCR, none of which this pipeline calls.
@@ -29,7 +31,6 @@ from homr import music_xml_generator, staff_parsing  # noqa: E402
 from homr.main import ProcessingConfig, detect_staffs_in_image  # noqa: E402
 from homr.model import MultiStaff  # noqa: E402
 from homr.music_xml_generator import XmlGeneratorArguments  # noqa: E402
-from homr.relieur import process_concat  # noqa: E402
 from homr.system_repair import repair_systems  # noqa: E402
 from homr.transformer import vocabulary  # noqa: E402
 from homr.transformer.configs import Config  # noqa: E402
@@ -43,6 +44,254 @@ _CONFIG = ProcessingConfig(
 _TRANSFORMER = Config()
 _TRANSFORMER.use_gpu_inference = False
 _TRANSFORMER.use_coreml_encoder = False
+_page_sources = []
+_rest_records = []
+_number_reader = None
+
+
+class NonMusicPage(ValueError):
+    """A page with no usable music staff; distinct from recognition failures."""
+
+
+def _has_printed_staff(image, rows):
+    """Require a supported five-line pattern, not a small piece of a QR code.
+
+    Compare ink along the detected lines with ink halfway between them. Work in
+    the detector's coordinates and sample its grid so rotation/curvature is kept.
+    A real page of rests is valid: this does not require any pitched notes.
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    height, width = gray.shape
+    for row in rows:
+        for staff in row.staffs:
+            for k in range(0, len(staff.grid[0].y) - 4, 5):
+                points = [p for p in staff.grid if len(p.y) >= k + 5]
+                unit = float(np.median([(p.y[k + 4] - p.y[k]) / 4 for p in points]))
+                if unit <= 0 or points[-1].x - points[0].x < 8 * unit:
+                    continue
+                line_hits, gap_hits = [], []
+                tolerance = max(1, round(unit * 0.12))
+                for point in points:
+                    x = round(point.x)
+                    if not 0 <= x < width:
+                        continue
+                    lines = point.y[k:k + 5]
+                    for y in lines:
+                        a, b = max(0, round(y) - tolerance), min(height, round(y) + tolerance + 1)
+                        if b > a:
+                            line_hits.append(gray[a:b, x].min() < 150)
+                    for y in [(a + b) / 2 for a, b in zip(lines, lines[1:])]:
+                        a, b = max(0, round(y) - tolerance), min(height, round(y) + tolerance + 1)
+                        if b > a:
+                            gap_hits.append(gray[a:b, x].min() < 150)
+                if line_hits and gap_hits:
+                    line_ink, gap_ink = float(np.mean(line_hits)), float(np.mean(gap_hits))
+                    if line_ink >= 0.55 and line_ink - gap_ink >= 0.25:
+                        return True
+    return False
+
+
+def _merge_pages(scores):
+    """Join equivalent part lists without discarding a new part or its attributes.
+
+    When part identity is ambiguous, fail visibly instead of dropping voices.
+    Preserve each page's divisions/key/time/clef changes, including multiple
+    attributes elements in one measure. They are legal MusicXML.
+    """
+    if not scores:
+        raise ValueError("No music found on any page")
+    merged = copy.deepcopy(scores[0])
+    main = merged.findall("part")
+    expected_ids = [p.get("id") for p in main]
+    before_notes = sum(len(s.findall(".//note")) for s in scores)
+    for score in scores[1:]:
+        incoming = score.findall("part")
+        if [p.get("id") for p in incoming] != expected_ids:
+            raise ValueError("Part structure changes between pages; confirm the part mapping before merging")
+        for target, source in zip(main, incoming):
+            target.extend(copy.deepcopy(source.findall("measure")))
+    for part in main:
+        for number, measure in enumerate(part.findall("measure"), 1):
+            measure.set("number", str(number))
+    if len(merged.findall(".//note")) != before_notes:
+        raise ValueError("Page merge lost notes or rests")
+    return merged
+
+
+def _first_time_is_inferred(voice):
+    for symbol in voice:
+        if symbol.rhythm.startswith("timeSignature"):
+            return False
+        if "barline" in symbol.rhythm or symbol.rhythm.startswith("repeat"):
+            break
+    return True
+
+
+def _set_meter(measure, value):
+    for attributes in measure.findall('attributes'):
+        for time in attributes.findall('time'):
+            attributes.remove(time)
+    attributes = measure.find('attributes')
+    if attributes is None:
+        attributes = ET.Element('attributes')
+        measure.insert(0, attributes)
+    time = ET.SubElement(attributes, 'time')
+    ET.SubElement(time, 'beats').text = str(value[0])
+    ET.SubElement(time, 'beat-type').text = str(value[1])
+
+
+def _repair_meters(score, sources):
+    """Use printed numeric evidence, and carry meter over an unmarked page break.
+
+    A missing/unsupported glyph does not override a model-read signature. Only
+    headers known to have been manufactured by the XML generator are removed.
+    """
+    parts = score.findall('part')
+    inferred = set()
+    offsets = [0] * len(parts)
+    pages = {source['page']: source for source in sources}
+    for source in sources:
+        for i, original in enumerate(source['score'].findall('part')):
+            if source['inferredFirst'][i]:
+                first = parts[i].findall('measure')[offsets[i]].find('attributes')
+                if first is not None:
+                    inferred.update(first.findall('time'))
+            offsets[i] += len(original.findall('measure'))
+
+    anchors = {}
+    all_anchors = []
+    for pi, part in enumerate(parts):
+        for mi, measure in enumerate(part.findall('measure')):
+            for note in measure.findall('note'):
+                at = re.search(r'-p(\d+)-(\d+)-(\d+)$', note.get('id', ''))
+                if not at or note.find('chord') is not None or note.find('grace') is not None:
+                    continue
+                page, x, y = map(int, at.groups())
+                source = pages.get(page)
+                if source is None or not source['layout']:
+                    continue
+                boxes = source['layout']
+                distance = lambda box: max(box[1]-y, y-box[3], 0)
+                staff = min(range(len(boxes)), key=lambda k: distance(boxes[k]))
+                item = {'part': pi, 'measure': mi, 'page': page, 'staff': staff, 'x': x}
+                anchors.setdefault((page, staff), []).append(item)
+                all_anchors.append(item)
+
+    targets, evidence, conflicts = {}, [], []
+    for source in sources:
+        for mark in source['meters']:
+            row = anchors.get((source['page'], mark['staff']), [])
+            if not row:
+                continue
+            after = [a for a in row if a['x'] > mark['x']]
+            if after:
+                anchor = min(after, key=lambda a: a['x'])
+            else:
+                last = max(row, key=lambda a: a['measure'])
+                later = [a for a in all_anchors if a['part'] == last['part'] and a['measure'] > last['measure']]
+                if not later:
+                    continue  # a courtesy meter after the final sounding measure
+                anchor = min(later, key=lambda a: (a['measure'], a['x']))
+            key = (anchor['part'], anchor['measure'])
+            value = (mark['numerator'], mark['denominator'])
+            targets.setdefault(key, set()).add(value)
+            evidence.append({'part': parts[key[0]].get('id'), 'measure': key[1]+1,
+                             'page': source['page'], **mark})
+
+    carried, changes = {}, []
+    for pi, part in enumerate(parts):
+        active, divisions = None, 1
+        for mi, measure in enumerate(part.findall('measure')):
+            values = targets.get((pi, mi), set())
+            if len(values) > 1:
+                conflicts.append({'part': part.get('id'), 'measure': mi+1, 'values': sorted(values)})
+                values = set()
+            if values:
+                value = next(iter(values))
+                _set_meter(measure, value)
+                changes.append({'part': part.get('id'), 'measure': mi+1, 'kind': 'printed-meter', 'meter': value})
+            for attributes in measure.findall('attributes'):
+                if attributes.find('divisions') is not None:
+                    divisions = int(attributes.findtext('divisions'))
+                for time in list(attributes.findall('time')):
+                    if time in inferred and active is not None:
+                        attributes.remove(time)
+                        changes.append({'part': part.get('id'), 'measure': mi+1,
+                                        'kind': 'page-continuation', 'meter': active})
+                    else:
+                        numerator, denominator = time.findtext('beats'), time.findtext('beat-type')
+                        if numerator and denominator:
+                            active = (sum(int(v) for v in numerator.split('+')), int(denominator))
+            notes = measure.findall('note')
+            if active and notes and all(n.find('rest') is not None and n.find('rest').get('measure') == 'yes' for n in notes):
+                duration = Fraction(active[0]*4*divisions, active[1])
+                if duration.denominator == 1:
+                    for node in measure.findall('note/duration') + measure.findall('backup/duration'):
+                        node.text = str(duration.numerator)
+        carried[part.get('id')] = active
+    return {'printedMeters': evidence, 'changes': changes, 'conflicts': conflicts}
+
+
+def _padding_rest(measure):
+    notes = measure.findall('note')
+    return bool(notes) and all(n.find('pitch') is None and n.find('unpitched') is None
+                               and n.find('rest') is not None and n.find('rest').get('measure') == 'yes'
+                               and not n.get('id') for n in notes) and all(n.tag in ('note', 'backup') for n in measure)
+
+
+def repair_rest_count(score, note_id, count):
+    """Resize only a verified expanded multirest; never remove sounding measures."""
+    if not 2 <= count <= 256:
+        raise ValueError('Printed multirest count is out of range')
+    for part in score.findall('part'):
+        measures = part.findall('measure')
+        for index, measure in enumerate(measures):
+            if not any(n.get('id') == note_id for n in measure.findall('note')):
+                continue
+            multiple = measure.find('attributes/measure-style/multiple-rest')
+            if multiple is None:
+                raise ValueError('Multirest source marker is missing')
+            previous = int(multiple.text)
+            padding = measures[index+1:index+previous]
+            if len(padding) != previous-1 or not all(_padding_rest(m) for m in padding):
+                raise ValueError('Multirest span contains non-rest content; correction needs review')
+            if count > previous:
+                for _ in range(count-previous):
+                    part.insert(list(part).index(measure)+previous, copy.deepcopy(padding[-1]))
+            elif count < previous:
+                for item in padding[count-1:]:
+                    part.remove(item)
+            multiple.text = str(count)
+            for number, item in enumerate(part.findall('measure'), 1):
+                item.set('number', str(number))
+            return {'part': part.get('id'), 'sourceId': note_id, 'startMeasure': index+1,
+                    'previous': previous, 'count': count}
+    raise ValueError('Multirest source was not found')
+
+
+def repair_rest_counts_xml(text, changes_json):
+    score = ET.fromstring(text)
+    audit_field = score.find('.//miscellaneous-field[@name="conversion-audit"]')
+    audit = json.loads(audit_field.text) if audit_field is not None else {}
+    sources_field = score.find('.//miscellaneous-field[@name="numeric-sources"]')
+    sources = json.loads(sources_field.text) if sources_field is not None else []
+    for change in json.loads(changes_json):
+        fixed = repair_rest_count(score, change['sourceId'], int(change['count']))
+        delta = fixed['count']-fixed['previous']
+        for entry in audit.get('printedMeters', []) + audit.get('changes', []) + audit.get('conflicts', []):
+            if entry.get('part') == fixed['part'] and entry.get('measure', 0) >= fixed['startMeasure']+fixed['previous']:
+                entry['measure'] += delta
+        audit.setdefault('restChanges', []).append(fixed)
+        for source in sources:
+            if source['sourceId'] == change['sourceId']:
+                source['count'] = int(change['count'])
+                source['reading'] = change.get('reading')
+    if audit_field is not None:
+        audit_field.text = json.dumps(audit)
+    if sources_field is not None:
+        sources_field.text = json.dumps(sources)
+    _order_children(score)
+    return ET.tostring(score, encoding='unicode', xml_declaration=True)
 
 
 def _ink(region):
@@ -207,6 +456,16 @@ def _build_note_id(note, symbol):
     note.set("id", f"n{_notes}{where}")
 
 
+_build_multi_measure_rest = music_xml_generator.build_multi_measure_rest
+
+
+def _capture_multi_measure_rest(symbol, attributes):
+    count = _build_multi_measure_rest(symbol, attributes)
+    if count and symbol.image_coordinates:
+        _rest_records.append({'attributes': attributes, 'symbol': symbol, 'count': count})
+    return count
+
+
 # homr segments a page eight tiles at a time; two at a time need far less memory at once
 # (which phones lack) and are as fast on a CPU.
 _extract = homr_main.extract
@@ -216,6 +475,7 @@ homr_main.extract = lambda *args, **kwargs: _extract(*args, batch_size=2, **kwar
 staff_parsing.parse_staff_image = _parse_staff_image_with_octave_clefs
 music_xml_generator.build_clef = _build_clef_with_octave
 music_xml_generator.build_image_position = _build_note_id
+music_xml_generator.build_multi_measure_rest = _capture_multi_measure_rest
 
 
 def _are_joined(image, upper, lower):
@@ -260,11 +520,19 @@ def _staff_boxes(rows, to_input):
 
 def _read_page(path):
     """One page image -> (MusicXML <score-partwise> element, staff boxes)."""
-    global _line_above
+    global _line_above, _rest_records
     _line_above = None
-    rows, image, debug, _, _, to_input = detect_staffs_in_image(path, _CONFIG)
+    _rest_records = []
+    try:
+        rows, image, debug, _, _, to_input = detect_staffs_in_image(path, _CONFIG)
+    except Exception as error:
+        if str(error) in ("No staffs found", "No noteheads or clefs found"):
+            raise NonMusicPage(str(error)) from error
+        raise
     try:
         rows = _split_unjoined_systems(image, repair_systems(debug, rows))
+        if not _has_printed_staff(image, rows):
+            raise NonMusicPage("No supported five-line music staff found")
         voices = staff_parsing.parse_staffs(debug, rows, image, config=_TRANSFORMER)
     finally:
         debug.clean_debug_files_from_previous_runs()
@@ -272,7 +540,36 @@ def _read_page(path):
         if symbol.image_coordinates:  # so far in the resized page homr works on
             symbol.image_coordinates = to_input(symbol.image_coordinates)
     xml = music_xml_generator.generate_xml(XmlGeneratorArguments(False, None, None), voices, "")
-    return xml, _staff_boxes(rows, to_input)
+    boxes = _staff_boxes(rows, to_input)
+    original = cv2.imread(path)
+    meters = read_meters(original, boxes)
+    parents = {child: parent for parent in xml.iter() for child in parent}
+    rests, rest_changes = [], []
+    for record in _rest_records:
+        measure = parents.get(record['attributes'])
+        notes = measure.findall('note') if measure is not None else []
+        note = next((n for n in notes if n.find('rest') is not None), None)
+        if note is None:
+            continue
+        symbol = record['symbol']
+        _build_note_id(note, symbol)
+        x, y = symbol.image_coordinates
+        nearest = min(boxes, key=lambda box: max(box[1]-y, y-box[3], 0))
+        number_box = rest_number_box(original, nearest, (x,y))
+        source = {'sourceId': note.get('id'), 'page': _page, 'count': record['count'],
+                  'x': round(x), 'y': round(y), 'numberBox': number_box}
+        rests.append(source)
+        if _number_reader and number_box:
+            a,b,c,d = number_box
+            reading = _number_reader(original[b:d,a:c])
+            source['reading'] = reading
+            if reading and reading['value'] != record['count']:
+                rest_changes.append(repair_rest_count(xml, note.get('id'), reading['value']))
+                source['count'] = reading['value']
+    _page_sources.append({'page': _page, 'score': xml, 'layout': boxes, 'meters': meters,
+                          'rests': rests, 'restChanges': rest_changes,
+                          'inferredFirst': [_first_time_is_inferred(voice) for voice in voices]})
+    return xml, boxes
 
 
 # The MusicXML schema fixes the order of children; homr writes some out of it (voice
@@ -311,28 +608,45 @@ def _give_every_staff_a_clef(score):
                 first.insert(list(first).index(last[-1]) + 1 if last else len(first), copy)
 
 
-def scan(paths, progress=lambda done, total: None):
+def scan(paths, progress=lambda done, total: None, number_reader=None):
     """Recognise each page image; pages without music are skipped. Returns MusicXML text.
     The staff boxes of every page ride along as the miscellaneous field "staff-layout"."""
-    global _page
-    with tempfile.TemporaryDirectory() as tmp:
-        xmls, layout = [], [[] for _ in paths]
-        for _page, path in enumerate(paths):
-            progress(_page, len(paths))
-            try:
-                xml, layout[_page] = _read_page(path)
-            except Exception as e:  # e.g. a title page: "No staffs found"
-                print(f"page {_page + 1} skipped: {e}", file=sys.stderr)
-                continue
-            xmls.append(os.path.join(tmp, f"{_page}.musicxml"))
-            ET.ElementTree(xml).write(xmls[-1], encoding="unicode", xml_declaration=True)
-        progress(len(paths), len(paths))
-        if not xmls:
-            raise ValueError("No music found on any page")
-        merged = process_concat(xmls)[0] if len(xmls) > 1 else ET.parse(xmls[0]).getroot()
-        _give_every_staff_a_clef(merged)
-        _order_children(merged)
-        field = ET.SubElement(ET.SubElement(merged.find("identification"), "miscellaneous"), "miscellaneous-field")
-        field.set("name", "staff-layout")
-        field.text = json.dumps(layout)
-        return ET.tostring(merged, encoding="unicode", xml_declaration=True)
+    global _page, _page_sources, _number_reader
+    _page_sources = []
+    _number_reader = number_reader
+    scores, layout = [], [[] for _ in paths]
+    for _page, path in enumerate(paths):
+        progress(_page, len(paths))
+        try:
+            xml, boxes = _read_page(path)
+        except NonMusicPage as error:
+            print(f"page {_page + 1} skipped: {error}", file=sys.stderr)
+            continue
+        except BaseException:
+            _number_reader = None
+            raise
+        layout[_page] = boxes
+        scores.append(xml)
+    progress(len(paths), len(paths))
+    _number_reader = None
+    merged = _merge_pages(scores)
+    numeric_audit = _repair_meters(merged, _page_sources)
+    numeric_audit['restChanges'] = [change for source in _page_sources for change in source['restChanges']]
+    _give_every_staff_a_clef(merged)
+    _order_children(merged)
+    identification = merged.find("identification")
+    if identification is None:
+        identification = ET.Element("identification")
+        work = merged.find('work')
+        merged.insert(list(merged).index(work)+1 if work is not None else 0, identification)
+    miscellaneous = identification.find('miscellaneous')
+    if miscellaneous is None:
+        miscellaneous = ET.SubElement(identification, 'miscellaneous')
+    field = ET.SubElement(miscellaneous, "miscellaneous-field")
+    field.set("name", "staff-layout")
+    field.text = json.dumps(layout)
+    field = ET.SubElement(miscellaneous, 'miscellaneous-field', name='numeric-sources')
+    field.text = json.dumps([rest for source in _page_sources for rest in source['rests']])
+    field = ET.SubElement(miscellaneous, 'miscellaneous-field', name='conversion-audit')
+    field.text = json.dumps(numeric_audit)
+    return ET.tostring(merged, encoding="unicode", xml_declaration=True)
