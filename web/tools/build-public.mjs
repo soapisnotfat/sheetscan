@@ -17,6 +17,9 @@ const runtime = ['homr.zip', 'models/segnet.onnx', 'models/encoder.onnx', 'model
 const repository = resolve(root, '..')
 const gitFiles = new Set(execFileSync('git', ['ls-files', '-z', '--', 'web/public', 'LICENSE', 'bench/tuplet-fonts', 'bench/accidental-fonts'], { cwd: repository, encoding: 'utf8' }).split('\0'))
 const notices = ['LICENSE', ...[...gitFiles].filter(name => /^bench\/(?:tuplet|accidental)-fonts\/(?:[\w-]+-LICENSE\.txt|manifest\.json)$/.test(name))]
+const runtimeLock = JSON.parse(await readFile(join(root, 'runtime-lock.json'), 'utf8'))
+const cacheArgument = process.argv.find(arg => arg.startsWith('--runtime-cache='))?.slice(16)
+const runtimeCache = resolve(cacheArgument || join(root, '.cache/runtime'))
 const staged = await mkdtemp(join(tmpdir(), 'sheetscan-public-'))
 try {
   for (const name of [...tracked, ...runtime]) {
@@ -24,6 +27,14 @@ try {
     await mkdir(dirname(join(staged, name)), { recursive: true })
     await copyFile(join(root, 'public', name), join(staged, name))
   }
+  for (const asset of runtimeLock.assets) {
+    const bytes = await readFile(join(runtimeCache, asset.sha256))
+    if (bytes.length !== asset.bytes || createHash('sha256').update(bytes).digest('hex') !== asset.sha256) throw new Error(`Runtime checksum mismatch: ${asset.path}`)
+    const destination = join(staged, 'runtime', asset.path)
+    await mkdir(dirname(destination), { recursive: true })
+    await writeFile(destination, bytes)
+  }
+  await copyFile(join(root, 'runtime-lock.json'), join(staged, 'runtime-lock.json'))
   for (const name of notices) {
     const destination = join(staged, name === 'LICENSE' ? name : `licenses/${name.slice(6)}`)
     await mkdir(dirname(destination), { recursive: true })
@@ -54,9 +65,9 @@ try {
     if (!worker || files[worker] !== expected.browser[frozenWorker]) throw new Error('Recognition worker changed from frozen candidate')
   }
   await writeFile(join(out, 'public-build.json'), JSON.stringify({
-    kind: sdk ? 'browser-sdk' : 'browser-app', recognizerVersion: 'v13-woodwind-pdf',
+    kind: sdk ? 'browser-sdk' : 'browser-app', sdkVersion: 'v14-static-runtime', recognizerVersion: 'v13-woodwind-pdf',
     sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
-    stagedPublicAllowlist: [...tracked, ...runtime], trackedNotices: notices, files,
+    stagedPublicAllowlist: [...tracked, ...runtime, 'runtime-lock.json', ...runtimeLock.assets.map(asset => 'runtime/' + asset.path)], trackedNotices: notices, files,
   }, null, 2)+'\n')
   console.log(`Safe ${sdk ? 'SDK' : 'app'} build: ${Object.keys(files).length} files; no local regression PDFs copied`)
 } finally {

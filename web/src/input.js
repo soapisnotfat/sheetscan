@@ -20,7 +20,7 @@ function checkAbort(signal) {
   if (signal?.aborted) throw abortError(signal)
 }
 
-async function* pdfPages(file, signal) {
+async function* pdfPages(file, signal, { maxWidth } = {}) {
   checkAbort(signal)
   const data = await file.arrayBuffer()
   checkAbort(signal)
@@ -42,7 +42,8 @@ async function* pdfPages(file, signal) {
       checkAbort(signal)
       const page = await pdf.getPage(n)
       checkAbort(signal)
-      const viewport = page.getViewport({ scale: DPI / 72 })
+      const raw = page.getViewport({ scale: 1 })
+      const viewport = page.getViewport({ scale: Math.min(DPI / 72, maxWidth ? maxWidth / raw.width : Infinity) })
       const canvas = Object.assign(document.createElement('canvas'), { width: viewport.width, height: viewport.height })
       const context = canvas.getContext('2d')
       context.fillStyle = '#fff'
@@ -65,7 +66,7 @@ async function* pdfPages(file, signal) {
       const result = await finish(canvas, text)
       if (signal?.aborted) URL.revokeObjectURL(result.url)
       checkAbort(signal)
-      yield result
+      yield { ...result, page: n, pageCount: pdf.numPages }
     }
   } catch (error) {
     failed = true
@@ -85,16 +86,22 @@ async function imagePage(file) {
 }
 
 /** All pages in order. Optional third argument: {signal}; returned URLs belong to the caller. */
-export async function loadPages(files, onProgress = () => {}, { signal } = {}) {
+export async function loadPages(files, onProgress = () => {}, { signal, maxWidth, onPage = () => {} } = {}) {
   const pages = []
   try {
-    for (const file of files) {
+    for (const [fileIndex, file] of Array.from(files).entries()) {
       checkAbort(signal)
       const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
-      if (isPdf) for await (const page of pdfPages(file, signal)) onProgress(pages.push(page))
+      if (isPdf) for await (const page of pdfPages(file, signal, { maxWidth })) {
+        page.fileIndex = fileIndex
+        onProgress(pages.push(page))
+        onPage(page)
+      }
       else {
         const page = await imagePage(file)
+        Object.assign(page, { fileIndex, page: 1, pageCount: 1 })
         pages.push(page)
+        onPage(page)
         checkAbort(signal)
         onProgress(pages.length)
       }

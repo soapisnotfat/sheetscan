@@ -1,16 +1,29 @@
 // Local-only conversion API. Importing this module never installs a service
 // worker, navigates, reloads, or edits the host application's project.
 import { loadPages } from './input.js'
-import { ocr, readNumber } from './ocr.js'
+import { ocr, readNumber, closeOCR } from './ocr.js'
+import { configureResources } from './resources.js'
 import { annotate, tokens } from './annotate.js'
 import { prepareMetadata } from './metadata.js'
 
 export const RECOGNIZER_VERSION = 'v13-woodwind-pdf'
+export const SDK_VERSION = 'v14-static-runtime'
 
 export function capabilities() {
   const jspi = typeof WebAssembly.Suspending === 'function'
   const sharedMemory = globalThis.crossOriginIsolated && typeof SharedArrayBuffer === 'function'
   return { jspi, sharedMemory: !!sharedMemory, supported: jspi || !!sharedMemory }
+}
+
+/** Raster-only preview: no recognition worker, runtime, network or OCR models. */
+export async function renderPreview(files, { signal, onProgress = () => {}, onPage = () => {}, maxWidth = 1400 } = {}) {
+  const pages = await loadPages(files, count => onProgress({ phase: 'preview', page: count }), {
+    signal, maxWidth,
+    onPage: ({ png, width, height, fileIndex, page, pageCount }) => onPage({ png, width, height, fileIndex, page, pageCount }),
+  })
+  try {
+    return { pages: pages.map(({ png, width, height, fileIndex, page, pageCount }) => ({ png, width, height, fileIndex, page, pageCount })) }
+  } finally { pages.forEach(page => URL.revokeObjectURL(page.url)) }
 }
 
 /** One conversion at a time; cancel leaves the caller's source/project intact. */
@@ -37,7 +50,10 @@ export function createScoreConverter(defaults = {}) {
   }
 }
 
-export async function convertScore(files, { signal, onProgress = () => {}, printedTuplets = true, forceSharedMemory = false } = {}) {
+export async function convertScore(files, { signal, onProgress = () => {}, printedTuplets = true, forceSharedMemory = false, modelBase } = {}) {
+  const moduleDirectory = new URL('.', import.meta.url)
+  const packageBase = /\/(?:src|assets)\/$/.test(moduleDirectory.pathname) ? new URL('..', moduleDirectory).href : moduleDirectory.href
+  configureResources(packageBase, { signal, onProgress })
   const supported = capabilities()
   const abortError = () => signal?.reason?.name === 'AbortError' ? signal.reason : new DOMException('Score conversion cancelled', 'AbortError')
   const checkAbort = () => { if (signal?.aborted) throw abortError() }
@@ -58,6 +74,7 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
     const error = abortError()
     worker?.terminate()
     networkWorker?.terminate()
+    closeOCR()
     pending?.reject(error)
     rejectAbort(error)
   }
@@ -81,7 +98,7 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
       worker.postMessage(message, transfer)
     })
     worker.onmessage = ({ data }) => {
-      if (data.type === 'error') pending?.reject(new Error(data.text))
+      if (data.type === 'error') pending?.reject(Object.assign(new Error(data.text), { code: data.code, resourceURL: data.resourceURL, attempts: data.attempts }))
       else if (data.type === 'result' || data.type === 'rests-repaired') pending?.resolve(data)
       else onProgress({ phase: 'recognizing', ...data })
     }
@@ -96,7 +113,7 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
     }
     onProgress({ phase: 'recognizing', text: 'Reading score…' })
     checkAbort()
-    let result = await wait(send({ pages: pages.map(p => p.png), printedTuplets, port }, port ? [port] : []))
+    let result = await wait(send({ pages: pages.map(p => p.png), printedTuplets, port, modelBase }, port ? [port] : []))
     let doc = new DOMParser().parseFromString(result.xml, 'application/xml')
     if (doc.querySelector('parsererror')) throw new Error('Recognition returned invalid MusicXML')
     const sources = JSON.parse(doc.querySelector('miscellaneous-field[name="numeric-sources"]')?.textContent ?? '[]')
@@ -127,6 +144,7 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
     signal?.removeEventListener('abort', cancel)
     worker?.terminate()
     networkWorker?.terminate()
+    closeOCR()
     urls.forEach(url => URL.revokeObjectURL(url))
   }
 }

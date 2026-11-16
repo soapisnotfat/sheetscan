@@ -1,16 +1,37 @@
 // Text on pages which have no text layer (scans, photos), for title, lyrics and chord
-// symbols. Tesseract loads on first use: its code and language data come from the CDN.
-const TESSERACT = 'https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.esm.min.js'
+// symbols. Its pinned code and language data are same-origin static resources.
+import { importResource, prepareResources, runtimeURL } from './resources.js'
 
 let worker
 
 async function start() {
-  const tesseract = await import(/* @vite-ignore */ TESSERACT)
-  const made = await (tesseract.default ?? tesseract).createWorker(['eng', 'deu'])
+  await prepareResources('ocr')
+  const tesseract = await importResource('tesseract/tesseract.esm.min.js')
+  const made = await (tesseract.default ?? tesseract).createWorker(['eng', 'deu'], 1, {
+    workerPath: runtimeURL('tesseract/worker.min.js'), workerBlobURL: false,
+    corePath: runtimeURL('tesseract/core/'), langPath: runtimeURL('tesseract/lang/'),
+    errorHandler: () => {},
+  })
   // "Sparse text": words scattered over the page. The default layout analysis looks for
   // columns of prose and loses most of the text between staves.
   await made.setParameters({ tessedit_pageseg_mode: '11' })
   return made
+}
+
+export function closeOCR() {
+  const previous = worker
+  worker = undefined
+  last = Promise.resolve()
+  previous?.then(made => made.terminate()).catch(() => {})
+}
+
+function getWorker() {
+  if (!worker) {
+    const pending = start()
+    worker = pending
+    pending.catch(() => { if (worker === pending) worker = undefined })
+  }
+  return worker
 }
 
 let last = Promise.resolve()
@@ -27,7 +48,7 @@ export function readNumber(page, box) {
 
 async function readDigits(page, [left, top, right, bottom]) {
   if (right <= left || bottom <= top) return null
-  const made = await (worker ??= start())
+  const made = await getWorker()
   const bitmap = await createImageBitmap(new Blob([page.png], { type: 'image/png' }))
   const canvas = document.createElement('canvas')
   canvas.width = Math.round((right - left) * 4) + 48
@@ -118,7 +139,7 @@ async function readDigits(page, [left, top, right, bottom]) {
 }
 
 async function read(page) {
-  const { data } = await (await (worker ??= start())).recognize(page.url, {}, { blocks: true })
+  const { data } = await (await getWorker()).recognize(page.url, {}, { blocks: true })
   return (data.blocks ?? [])
     .flatMap((block) => block.paragraphs)
     .flatMap((paragraph) => paragraph.lines)

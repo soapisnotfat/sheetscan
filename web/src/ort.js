@@ -1,7 +1,7 @@
 // The three recognition networks on onnxruntime-web, behind the two calls the Python side
 // needs (see py/ort_shim.py). Used inside the recognition worker where the browser has
 // WebAssembly JSPI, and in a worker of its own (ort.worker.js) where it has not.
-const ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/'
+import { assetBytes, importResource, prepareResources, runtimeURL } from './resources.js'
 const MODELS = ['segnet', 'encoder', 'decoder']
 
 let ort
@@ -9,41 +9,17 @@ const sessions = {}
 const kept = new Map() // outputs which stay here: the decoder's cache, fed back in each step
 
 /** Fetch with byte progress, kept in the Cache API so that it downloads once. */
-export async function cached(url, onBytes = () => {}) {
-  const cache = await caches.open('omr-assets-v1')
-  let res = await cache.match(url)
-  if (!res) {
-    res = await fetch(url)
-    if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`)
-    const total = +res.headers.get('content-length') || 0
-    const reader = res.body.getReader()
-    const chunks = []
-    for (let got = 0; ;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      chunks.push(value)
-      onBytes((got += value.length), total)
-    }
-    const blob = new Blob(chunks)
-    await cache.put(url, new Response(blob))
-    return blob.arrayBuffer()
-  }
-  return res.arrayBuffer()
-}
+export async function cached(url, onBytes = () => {}) { return assetBytes(url, { onBytes }) }
 
 /** Download the models from `base` and start them. onProgress(bytes done, bytes in all). */
-export async function load(base, onProgress) {
-  ort = await import(/* @vite-ignore */ ORT + 'ort.wasm.min.mjs')
-  ort.env.wasm.wasmPaths = ORT
+export async function load(base, onProgress, modelBase = base) {
+  await prepareResources('ort')
+  ort = await importResource('ort/ort.wasm.min.mjs')
+  ort.env.wasm.wasmPaths = runtimeURL('ort/')
   // Threads need shared memory; phones get fewer, each costs memory.
   ort.env.wasm.numThreads = typeof SharedArrayBuffer === 'function' ? Math.min(navigator.hardwareConcurrency || 4, 8) : 1
-  const progress = {}
   await Promise.all(MODELS.map(async (name) => {
-    const bytes = await cached(`${base}models/${name}.onnx`, (got, total) => {
-      progress[name] = [got, total]
-      const sum = (i) => Object.values(progress).reduce((s, p) => s + p[i], 0)
-      onProgress(sum(0), sum(1))
-    })
+    const bytes = await cached(`${modelBase}models/${name}.onnx`)
     // WASM with threads; the WebGPU provider was tried and stalled while starting.
     sessions[name] = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'] })
   }))
