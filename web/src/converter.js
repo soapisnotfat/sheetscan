@@ -1,8 +1,8 @@
 // Local-only conversion API. Importing this module never installs a service
 // worker, navigates, reloads, or edits the host application's project.
 import { loadPages } from './input.js'
-import { ocr, readNumber, closeOCR } from './ocr.js'
-import { configureResources } from './resources.js'
+import { createOCR } from './ocr.js'
+import { createResourceClient } from './resources.js'
 import { annotate, tokens } from './annotate.js'
 import { prepareMetadata } from './metadata.js'
 
@@ -53,7 +53,7 @@ export function createScoreConverter(defaults = {}) {
 export async function convertScore(files, { signal, onProgress = () => {}, printedTuplets = true, forceSharedMemory = false, modelBase } = {}) {
   const moduleDirectory = new URL('.', import.meta.url)
   const packageBase = /\/(?:src|assets)\/$/.test(moduleDirectory.pathname) ? new URL('..', moduleDirectory).href : moduleDirectory.href
-  configureResources(packageBase, { signal, onProgress })
+  const textOCR = createOCR(createResourceClient(packageBase, { signal, onProgress }))
   const supported = capabilities()
   const abortError = () => signal?.reason?.name === 'AbortError' ? signal.reason : new DOMException('Score conversion cancelled', 'AbortError')
   const checkAbort = () => { if (signal?.aborted) throw abortError() }
@@ -74,7 +74,7 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
     const error = abortError()
     worker?.terminate()
     networkWorker?.terminate()
-    closeOCR()
+    textOCR.close()
     pending?.reject(error)
     rejectAbort(error)
   }
@@ -90,7 +90,7 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
     const pages = await wait(rendering)
     urls.push(...pages.map(p => p.url))
     checkAbort()
-    const words = Promise.all(pages.map(p => p.text.length ? p.text : ocr(p)))
+    const words = Promise.all(pages.map(p => p.text.length ? p.text : textOCR.ocr(p)))
     words.catch(() => {})
     worker = new Worker(new URL('./omr.worker.js', import.meta.url), { type: 'module' })
     const send = (message, transfer = []) => new Promise((resolve, reject) => {
@@ -120,7 +120,7 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
     const changes = []
     for (const source of sources) {
       if (!source.numberBox || !pages[source.page]) continue
-      const reading = await wait(readNumber(pages[source.page], source.numberBox))
+      const reading = await wait(textOCR.readNumber(pages[source.page], source.numberBox))
       if (reading && reading.value !== source.count) changes.push({ sourceId: source.sourceId, count: reading.value, reading })
     }
     if (changes.length) {
@@ -128,7 +128,7 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
       doc = new DOMParser().parseFromString(result.xml, 'application/xml')
     }
     onProgress({ phase: 'text', text: 'Reading printed text…' })
-    const prepared = await wait(prepareMetadata(pages, await wait(words), doc))
+    const prepared = await wait(prepareMetadata(pages, await wait(words), doc, { readTempoNumber: textOCR.readNumber }))
     annotate(doc, prepared.text.map(tokens), prepared)
     checkAbort()
     const audit = JSON.parse(doc.querySelector('miscellaneous-field[name="conversion-audit"]')?.textContent ?? '{}')
@@ -144,7 +144,7 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
     signal?.removeEventListener('abort', cancel)
     worker?.terminate()
     networkWorker?.terminate()
-    closeOCR()
+    textOCR.close()
     urls.forEach(url => URL.revokeObjectURL(url))
   }
 }

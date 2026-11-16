@@ -1,7 +1,9 @@
+import { createResourceClient } from './resources.js'
 // Text on pages which have no text layer (scans, photos), for title, lyrics and chord
 // symbols. Its pinned code and language data are same-origin static resources.
-import { importResource, prepareResources, runtimeURL } from './resources.js'
 
+
+export function createOCR({ importResource, prepareResources, runtimeURL }) {
 let worker
 
 async function start() {
@@ -18,7 +20,7 @@ async function start() {
   return made
 }
 
-export function closeOCR() {
+function close() {
   const previous = worker
   worker = undefined
   last = Promise.resolve()
@@ -37,12 +39,12 @@ function getWorker() {
 let last = Promise.resolve()
 
 /** Words on a page image as the tokens annotate.js takes: [{str, x, y, h, w}]. */
-export function ocr(page) {
+function ocr(page) {
   return (last = last.catch(() => {}).then(() => read(page))) // the worker takes one page at a time
 }
 
 /** Read the printed count above a model-detected multirest; stays on this device. */
-export function readNumber(page, box) {
+function readNumber(page, box) {
   return (last = last.catch(() => {}).then(() => readDigits(page, box)))
 }
 
@@ -149,3 +151,19 @@ async function read(page) {
     .filter((word) => word.confidence > 55 && /\p{L}|^-+$|=|^\d{2,3}\)?$/u.test(word.text))
     .map(({ text, bbox }) => ({ str: text, x: bbox.x0, w: bbox.x1 - bbox.x0, y: bbox.y1, h: bbox.y1 - bbox.y0 }))
 }
+
+return { ocr, readNumber, close }
+}
+
+// Standalone viewer compatibility. SDK conversions always use their own instance.
+let viewerOCR
+function defaultOCR() {
+  if (!viewerOCR) {
+    const directory = new URL('.', import.meta.url)
+    const base = /\/(?:src|assets)\/$/.test(directory.pathname) ? new URL('..', directory).href : directory.href
+    viewerOCR = createOCR(createResourceClient(base))
+  }
+  return viewerOCR
+}
+export const ocr = (...args) => defaultOCR().ocr(...args)
+export const readNumber = (...args) => defaultOCR().readNumber(...args)

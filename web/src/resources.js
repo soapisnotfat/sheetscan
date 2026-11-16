@@ -10,8 +10,6 @@ const models = {
 }
 const modelBytes = { 'segnet.onnx': 57311361, 'encoder.onnx': 52861122, 'decoder.onnx': 47356003 }
 const nativeFetch = globalThis.fetch.bind(globalThis)
-let base, progress = () => {}, activeSignal, hooked = false
-const inFlight = new Map()
 const hash = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), n => n.toString(16).padStart(2, '0')).join('')
 const aborted = signal => { if (signal?.aborted) throw signal.reason ?? new DOMException('Download cancelled', 'AbortError') }
 const mime = url => /\.wasm$/.test(url) ? 'application/wasm' : /\.m?js$/.test(url) ? 'text/javascript' : /\.json$/.test(url) ? 'application/json' : 'application/octet-stream'
@@ -22,13 +20,12 @@ export function resourceError(url, message, code = 'RESOURCE_DOWNLOAD_FAILED', a
   return error
 }
 
-export function configureResources(packageBase, { signal, onProgress = () => {} } = {}) {
-  base = packageBase
-  activeSignal = signal
-  progress = onProgress
-}
+export function createResourceClient(packageBase, { signal, onProgress = () => {} } = {}) {
+  const base = packageBase, activeSignal = signal, progress = event => { if (!signal?.aborted) onProgress(event) }
+  let hooked = false
+  const inFlight = new Map()
 
-export const runtimeURL = path => new URL('runtime/' + path, base).href
+const runtimeURL = path => new URL('runtime/' + path, base).href
 
 function metadata(url) {
   const relative = new URL(url).pathname.split('/runtime/')[1]
@@ -38,7 +35,7 @@ function metadata(url) {
 }
 
 /** Complete, verified downloads are cached. Quota errors affect offline reuse only. */
-export async function assetBytes(url, { signal = activeSignal, onBytes = () => {} } = {}) {
+async function assetBytes(url, { signal = activeSignal, onBytes = () => {} } = {}) {
   url = new URL(url, base).href
   const expected = metadata(url)
   if (!expected) throw resourceError(url, 'Unpinned recognition resource', 'UNPINNED_RESOURCE')
@@ -102,14 +99,14 @@ export async function assetBytes(url, { signal = activeSignal, onBytes = () => {
   throw failure
 }
 
-export async function prepareResources(group) {
+async function prepareResources(group) {
   const paths = Object.entries(assets).filter(([, value]) => value.group === group).map(([path]) => path)
   // Bound simultaneous large responses and expose real per-resource byte progress.
   for (let index = 0; index < paths.length; index += 2) await Promise.all(paths.slice(index, index + 2).map(path => assetBytes(runtimeURL(path))))
 }
 
 /** Handles fetches made by Pyodide/ORT themselves, including their WASM/wheels. */
-export function installResourceFetch() {
+function installResourceFetch() {
   if (hooked) return
   hooked = true
   globalThis.fetch = async (input, init) => {
@@ -124,7 +121,7 @@ export function installResourceFetch() {
   }
 }
 
-export async function importResource(path) {
+async function importResource(path) {
   const url = runtimeURL(path)
   await assetBytes(url)
   let failure
@@ -135,3 +132,16 @@ export async function importResource(path) {
   }
   throw failure
 }
+
+  return { assetBytes, prepareResources, importResource, runtimeURL, installResourceFetch }
+}
+
+// Recognition workers have one owner for their lifetime. Main-thread OCR uses
+// createResourceClient directly, so a cancelled conversion cannot affect its successor.
+let workerResources
+export function configureResources(base, options) { workerResources = createResourceClient(base, options) }
+export const assetBytes = (...args) => workerResources.assetBytes(...args)
+export const prepareResources = (...args) => workerResources.prepareResources(...args)
+export const importResource = (...args) => workerResources.importResource(...args)
+export const runtimeURL = (...args) => workerResources.runtimeURL(...args)
+export const installResourceFetch = (...args) => workerResources.installResourceFetch(...args)
