@@ -205,25 +205,51 @@ export async function prepareMetadata(pages, rawText, doc, { readTempoNumber=rea
   return {text,layout,sourceAudit:audit}
 }
 
+// Written-to-sounding conventions only for an explicitly identified saxophone.
+// Clarinet key and octave-transposing C instruments remain unclassified here.
+const SOURCE_SAXOPHONES = [
+  { id:'soprano', name:'Soprano Saxophone', diatonic:-1, chromatic:-2 },
+  { id:'alto', name:'Alto Saxophone', diatonic:-5, chromatic:-9 },
+  { id:'tenor', name:'Tenor Saxophone', diatonic:-8, chromatic:-14 },
+  { id:'baritone', name:'Baritone Saxophone', diatonic:-12, chromatic:-21 },
+].map(instrument=>({ ...instrument,
+  source:new RegExp('\\b'+instrument.id+'\\s+saxophone\\b','i'),
+  header:new RegExp('\\bfor\\s+(?:the\\s+)?'+instrument.id+'\\s+saxophone\\b','i'),
+  namePattern:new RegExp('^'+instrument.id+'\\s+sax(?:ophone)?$','i'),
+}))
+
+const OTHER_SOURCE_INSTRUMENT = /\b(?:flute|piccolo|oboe|clarinet|bassoon|piano|organ|orchestra|band|horn|trumpet|violin|cello)\b/i
+
 /** Explicit source instrument evidence, unique part only; written music untouched. */
 export function sourceInstrumentMetadata(doc, text, layout) {
   const parts=[...doc.querySelectorAll('score-partwise > part')],scoreParts=[...doc.querySelectorAll('part-list > score-part')]
   if(doc.querySelector('score-partwise > defaults > concert-score'))return {status:'preserved',reason:'explicit-concert-score-xml'}
   const all=text.flat(),joined=all.map(t=>t.str).join(' ')
   if(/\bconcert\s+(?:score|pitch)\b|\bin\s+concert\s+pitch\b|实音谱/i.test(joined))return {status:'unknown',reason:'explicit-concert-score'}
-  if(/\bfor\s+(?:the\s+)?alto\s+saxophone\s+(?:and|with|&)\s+(?:piano|organ|orchestra|band)\b/i.test(joined))return {status:'unknown',reason:'multiple-source-instruments'}
   const evidence=[]
+  let multipleSource=false,otherSource=false
   text.forEach((items,page)=>{
     const first=layout[page]?.[0]
     if(!first)return
     const header=items.filter(t=>t.y<first[1]&&t.y>0).sort((a,b)=>a.y-b.y||a.x-b.x)
     const lines=[]
     for(const t of header){const line=lines.find(l=>Math.abs(l[0].y-t.y)<.55*Math.max(l[0].h,t.h));if(line)line.push(t);else lines.push([t])}
-    for(const line of lines){line.sort((a,b)=>a.x-b.x);if(/\bfor\s+(?:the\s+)?alto\s+saxophone\b/i.test(line.map(t=>t.str).join(' ')))evidence.push({page,kind:'for-alto-header',tokens:line})}
-    const label=items.find(t=>/^alto\s+saxophone$/i.test(t.str.trim())&&t.x+t.w<first[0]+.5*(first[3]-first[1])&&Math.abs(t.y-(first[1]+first[3])/2)<first[3]-first[1])
-    if(label)evidence.push({page,kind:'explicit-part-label',tokens:[label]})
+    for(const line of lines){
+      line.sort((a,b)=>a.x-b.x)
+      const words=line.map(t=>t.str).join(' '),matches=SOURCE_SAXOPHONES.filter(instrument=>instrument.header.test(words))
+      if(matches.length&&(/\band\b|\bwith\b|[&/]|\b(?:duet|trio|quartet|ensemble)\b/i.test(words)||OTHER_SOURCE_INSTRUMENT.test(words)||SOURCE_SAXOPHONES.filter(instrument=>instrument.source.test(words)).length>1))multipleSource=true
+      if(/\bfor\s+(?:the\s+)?/i.test(words)&&OTHER_SOURCE_INSTRUMENT.test(words))otherSource=true
+      for(const instrument of matches)evidence.push({page,kind:'for-'+instrument.id+'-header',instrument:instrument.id,tokens:line})
+    }
+    for(const instrument of SOURCE_SAXOPHONES){
+      const label=items.find(t=>new RegExp('^'+instrument.id+'\\s+saxophone$','i').test(t.str.trim())&&t.x+t.w<first[0]+.5*(first[3]-first[1])&&Math.abs(t.y-(first[1]+first[3])/2)<first[3]-first[1])
+      if(label)evidence.push({page,kind:'explicit-part-label',instrument:instrument.id,tokens:[label]})
+    }
   })
-  if(!evidence.length)return {status:'unknown',reason:'no-explicit-alto-source'}
+  if(multipleSource||(evidence.length&&otherSource))return {status:'unknown',reason:'multiple-source-instruments',evidence}
+  if(!evidence.length)return {status:'unknown',reason:'no-explicit-saxophone-source'}
+  if(new Set(evidence.map(item=>item.instrument)).size!==1)return {status:'unknown',reason:'conflicting-source-instruments',evidence}
+  const instrument=SOURCE_SAXOPHONES.find(item=>item.id===evidence[0].instrument)
   if(parts.length!==1||scoreParts.length!==1)return {status:'unknown',reason:'no-unique-part',evidence}
   const part=parts[0],definition=scoreParts[0]
   if(part.querySelector('attributes > for-part'))return {status:'preserved',reason:'explicit-for-part',evidence}
@@ -231,23 +257,23 @@ export function sourceInstrumentMetadata(doc, text, layout) {
   const instruments=[...definition.querySelectorAll(':scope > score-instrument')]
   if(instruments.length>1)return {status:'unknown',reason:'no-unique-instrument-record',evidence}
   const names=[...definition.querySelectorAll('part-name,instrument-name')].map(x=>x.textContent.trim()).filter(Boolean)
-  if(names.some(name=>!/^alto\s+sax(?:ophone)?$/i.test(name)&&!/^(?:voice|music|part(?:\s*\d+)?)$/i.test(name)))return {status:'unknown',reason:'conflicting-instrument-name',evidence}
+  if(names.some(name=>!instrument.namePattern.test(name)&&!/^(?:voice|music|part(?:\s*\d+)?)$/i.test(name)))return {status:'unknown',reason:'conflicting-instrument-name',evidence}
   const measure=part.querySelector(':scope > measure')
   if(!measure)return {status:'unknown',reason:'no-measure',evidence}
   let attributes=measure.querySelector(':scope > attributes')
   if(!attributes){attributes=doc.createElement('attributes');measure.insertBefore(attributes,measure.firstChild)}
   const transpose=doc.createElement('transpose')
-  for(const [tag,value] of [['diatonic','-5'],['chromatic','-9']]){const el=doc.createElement(tag);el.textContent=value;transpose.append(el)}
+  for(const [tag,value] of [['diatonic',instrument.diatonic],['chromatic',instrument.chromatic]]){const el=doc.createElement(tag);el.textContent=String(value);transpose.append(el)}
   attributes.insertBefore(transpose,[...attributes.children].find(c=>['for-part','directive','measure-style'].includes(c.tagName))??null)
   if(instruments.length===1) {
     let name=instruments[0].querySelector(':scope > instrument-name')
     if(!name){name=doc.createElement('instrument-name');instruments[0].insertBefore(name,instruments[0].firstChild)}
-    if(!name.textContent.trim()||/^(?:voice|music|part(?:\s*\d+)?)$/i.test(name.textContent.trim()))name.textContent='Alto Saxophone'
+    if(!name.textContent.trim()||/^(?:voice|music|part(?:\s*\d+)?)$/i.test(name.textContent.trim()))name.textContent=instrument.name
   } else {
-    const instrument=doc.createElement('score-instrument');instrument.setAttribute('id',part.getAttribute('id')+'-source-alto')
-    const name=doc.createElement('instrument-name');name.textContent='Alto Saxophone';instrument.append(name)
-    definition.insertBefore(instrument,[...definition.children].find(c=>['midi-device','midi-instrument'].includes(c.tagName))??null)
+    const record=doc.createElement('score-instrument');record.setAttribute('id',part.getAttribute('id')+'-source-'+instrument.id)
+    const name=doc.createElement('instrument-name');name.textContent=instrument.name;record.append(name)
+    definition.insertBefore(record,[...definition.children].find(c=>['midi-device','midi-instrument'].includes(c.tagName))??null)
   }
-  return {status:'applied',part:part.getAttribute('id'),diatonic:-5,chromatic:-9,
-    derivation:'standard-alto-instrument-convention',evidenceType:evidence[0].kind,writtenMusicChanged:false,evidence}
+  return {status:'applied',part:part.getAttribute('id'),diatonic:instrument.diatonic,chromatic:instrument.chromatic,
+    derivation:'standard-'+instrument.id+'-instrument-convention',evidenceType:evidence[0].kind,writtenMusicChanged:false,evidence}
 }
