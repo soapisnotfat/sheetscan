@@ -1,4 +1,4 @@
-"""Read single-digit printed meters from staff images using Bravura glyph shapes.
+"""Printed meters, forward repeats and source-only multirest geometry.
 
 The static glyph raster data is generated from the OFL-1.1 Bravura font:
 https://github.com/steinbergmedia/bravura (license in web/public/Bravura-LICENSE.txt).
@@ -85,6 +85,17 @@ def rest_number_box(image,box,point):
     Returns a source-image crop rectangle. The recognizer may read that crop using
     an optional local digit-OCR callback; the browser can use its existing Tesseract worker.
     """
+    # A model may emit an ordinary whole-rest token for an old-style longa.
+    # Source regions are therefore detected independently of decoder class.
+    regions=read_multirest_regions(image,[box])
+    choices=[]
+    unit=(box[3]-box[1])/4
+    for region in regions:
+        left,top,right,bottom=region['shapeBox']
+        distance=max(left-point[0],point[0]-right,0)+abs((top+bottom)/2-point[1])
+        choices.append((distance,region['numberBox']))
+    if choices and min(choices,key=lambda item:item[0])[0] <= 5*unit:
+        return min(choices,key=lambda item:item[0])[1]
     gray=cv2.cvtColor(image,cv2.COLOR_BGR2GRAY) if image.ndim==3 else image
     left,top,right,bottom,*_=box;unit=(bottom-top)/4
     if unit<=0:
@@ -110,6 +121,142 @@ def rest_number_box(image,box,point):
     center=bx+w/2
     return [max(0,round(center-3*unit)),max(0,round(top-3.4*unit)),
             min(gray.shape[1],round(center+3*unit)),max(0,round(top-.12*unit))]
+
+
+def _rest_number_groups(gray,left,top,right,unit):
+    """Untyped, tight above-staff ink groups; downstream OCR validates digits."""
+    y0=max(0,round(top-4*unit));y1=max(0,min(len(gray),round(top-.15*unit)))
+    x0=max(0,round(left));x1=min(gray.shape[1],round(right))
+    if y1<=y0 or x1<=x0:
+        return []
+    ink=(gray[y0:y1,x0:x1]<160).astype(np.uint8)
+    _,_,stats,_=cv2.connectedComponentsWithStats(ink)
+    glyphs=sorted([(x0+int(x),y0+int(y),int(w),int(h)) for x,y,w,h,a in stats[1:]
+                   if .65*unit<=h<=2.9*unit and .12*unit<=w<=2.5*unit
+                   and y+h<=ink.shape[0]-2
+                   and .12<=a/(w*h)<=.95],key=lambda item:item[0])
+    groups=[]
+    for x,y,w,h in glyphs:
+        if groups:
+            a,b,c,d=groups[-1]
+            if -.15*unit<=x-c<=1.1*unit and abs((y+h/2)-(b+d)/2)<=.45*unit:
+                groups[-1]=[min(a,x),min(b,y),max(c,x+w),max(d,y+h)]
+                continue
+        groups.append([x,y,x+w,y+h])
+    return [box for box in groups if box[2]-box[0]<=6.3*unit]
+
+
+def read_multirest_regions(image,staff_boxes):
+    """Locate H and old-style symbol multirests from source ink alone.
+
+    Returns original-pixel staff/style/shapeBox/numberBox evidence. A source
+    number is required; no count, pitch, model token, filename, measure index or
+    expected bar total is used. Counts are deliberately left to existing OCR.
+    A lone ordinary whole rest is not a symbolic-multirest shape. The caller
+    must bind a unique region to score rest(s), check count and musical context,
+    and split expansion at key/time/clef boundaries. This function changes no XML.
+    """
+    gray=cv2.cvtColor(image,cv2.COLOR_BGR2GRAY) if image.ndim==3 else image
+    result=[]
+    for staff,(left,top,right,bottom,*_) in enumerate(staff_boxes):
+        unit=(bottom-top)/4
+        if unit<3 or right-left<3*unit:
+            continue
+        x0,x1=max(0,round(left)),min(gray.shape[1],round(right))
+        y0,y1=max(0,round(top-.3*unit)),min(len(gray),round(bottom+.3*unit))
+        ink=(gray[y0:y1,x0:x1]<160).astype(np.uint8)
+        if not ink.size:
+            continue
+        shapes=[]
+        # H bars survive vertical erosion; the five thin staff lines do not.
+        thick=cv2.erode(ink,np.ones((max(3,round(unit*.25)),1),np.uint8))
+        bars=cv2.morphologyEx(thick,cv2.MORPH_OPEN,np.ones((1,max(5,round(unit*3))),np.uint8))
+        _,_,stats,_=cv2.connectedComponentsWithStats(bars)
+        vertical=cv2.morphologyEx(ink,cv2.MORPH_OPEN,np.ones((max(3,round(1.5*unit)),1),np.uint8))
+        for x,y,w,h,a in stats[1:]:
+            cy=y0+y+h/2
+            if not (w>=3*unit and .25*unit<=h<=1.35*unit and abs(cy-(top+2*unit))<=.55*unit):
+                continue
+            # Parallel secondary beams plus their note stems can otherwise look
+            # like H caps. A genuine multirest has one thick horizontal body.
+            parallel=any(ow>=3*unit and .3*unit<=abs((y+h/2)-(oy+oh/2))<=1.5*unit
+                         and min(x+w,ox+ow)-max(x,ox)>=.75*min(w,ow)
+                         for ox,oy,ow,oh,oa in stats[1:])
+            if parallel:
+                continue
+            caps=[]
+            for endpoint in (x,x+w-1):
+                a0=max(0,round(endpoint-.3*unit));a1=min(ink.shape[1],round(endpoint+.3*unit)+1)
+                strip=vertical[:,a0:a1]
+                ys=np.flatnonzero(strip.any(axis=1)) if strip.size else np.array([])
+                caps.append(bool(len(ys) and y0+ys[0]<=cy-.65*unit and y0+ys[-1]>=cy+.65*unit))
+            if all(caps):
+                inner=vertical[:,max(0,round(x+unit)):min(ink.shape[1],round(x+w-unit))]
+                # A beamed note group has interior stems; an H rest does not.
+                if inner.size and np.count_nonzero(inner.any(axis=0))>max(2,.4*unit):
+                    continue
+                shapes.append({'style':'H','box':[x0+int(x),round(cy-unit),x0+int(x+w),round(cy+unit)]})
+        # Remove complete staff lines before finding narrow symbolic slabs.
+        horizontal=cv2.morphologyEx(ink,cv2.MORPH_OPEN,np.ones((1,max(12,round(unit*7))),np.uint8))
+        clean=cv2.morphologyEx(ink-horizontal,cv2.MORPH_CLOSE,np.ones((3,1),np.uint8))
+        # Anti-aliased staff edges can leave one-pixel horizontal bridges
+        # between neighboring symbolic slabs; remove those before components.
+        clean=cv2.morphologyEx(clean,cv2.MORPH_OPEN,np.ones((max(3,round(.16*unit))|1,1),np.uint8))
+        _,_,stats,_=cv2.connectedComponentsWithStats(clean)
+        symbols=[];whole_parts=[]
+        for x,y,w,h,a in stats[1:]:
+            box=[x0+int(x),y0+int(y),x0+int(x+w),y0+int(y+h)]
+            cx,cy=(box[0]+box[2])/2,(box[1]+box[3])/2
+            if any(s['style']=='H' and s['box'][0]-.3*unit<=cx<=s['box'][2]+.3*unit for s in shapes):
+                continue
+            fill=a/(w*h);style=None
+            if .24*unit<=w<=.95*unit and fill>=.72:
+                if 1.6*unit<=h<=2.4*unit and abs(cy-(top+2*unit))<=.4*unit:style='longa'
+                elif .75*unit<=h<=1.35*unit and abs(cy-(top+1.5*unit))<=.3*unit:style='breve'
+            if style is None and abs(cy-(top+2*unit))<=.5*unit and 1.05*unit<=w<=2.1*unit and 1.6*unit<=h<=2.4*unit and fill>=.45:
+                # Maxima is two connected longa columns, not a full barline.
+                slab=clean[y:y+h,x:x+w]
+                dense=(slab.mean(axis=0)>=.75).astype(np.uint8)
+                runs=np.diff(np.pad(dense,(1,1)).astype(int))
+                if sum(runs==1)==2:style='maxima'
+            if style is not None:symbols.append({'style':style,'box':box})
+            elif .75*unit<=w<=1.8*unit and .25*unit<=h<=.75*unit and fill>=.72 and top+.8*unit<=cy<=top+1.7*unit:
+                whole_parts.append({'style':'whole-part','box':box})
+        # Number-first grouping can cover multiple old-style rest glyphs. Keep
+        # individual contours until one above-number has selected its range.
+        groups=_rest_number_groups(gray,left,top,right,unit)
+        for number in groups:
+            nx=(number[0]+number[2])/2
+            matches=[]
+            for shape in shapes+symbols:
+                a,b,c,d=shape['box'];sx=(a+c)/2
+                allowance=max((.65 if shape['style']=='H' else 1.8)*unit,(c-a)/2)
+                if abs(nx-sx)<=allowance and top-number[3]>=.12*unit:
+                    matches.append((abs(nx-sx),shape))
+            if not matches:
+                continue
+            _,best=min(matches,key=lambda item:item[0])
+            # Adjacent symbolic glyphs may encode 3/5/etc. Include only compact,
+            # aligned slabs, never cross a clef/key/time signature or barline.
+            selected=[best]
+            if best['style']!='H':
+                for other in symbols+whole_parts:
+                    if other is best:continue
+                    ax,bx=best['box'][0],best['box'][2];a,b,c,d=other['box']
+                    gap=max(a-bx,ax-c,0)
+                    if gap<=1.5*unit and abs((a+c)/2-nx)<=2.4*unit:
+                        selected.append(other)
+            a=min(s['box'][0] for s in selected);b=min(s['box'][1] for s in selected)
+            c=max(s['box'][2] for s in selected);d=max(s['box'][3] for s in selected)
+            # A count must be centered over its selected shape/group.
+            if abs(nx-(a+c)/2)>max(.8*unit,.28*(c-a)):
+                continue
+            pad=max(2,round(.18*unit))
+            number_box=[max(0,number[0]-pad),max(0,number[1]-pad),min(gray.shape[1],number[2]+pad),min(len(gray),number[3]+pad)]
+            result.append({'staff':staff,'style':best['style'] if len(selected)==1 else 'symbols',
+                           'shapeBox':[a,b,c,d],'numberBox':number_box,
+                           'center':[round((a+c)/2,2),round((b+d)/2,2)],'evidence':'shape-and-above-number'})
+    return sorted(result,key=lambda item:(item['staff'],item['shapeBox'][0]))
 
 
 def read_forward_repeats(image, boxes):

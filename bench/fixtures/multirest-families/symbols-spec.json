@@ -1,0 +1,79 @@
+[
+  {
+    "count": 2,
+    "first_measure": 1,
+    "meter": [
+      4,
+      4
+    ],
+    "use_symbols": true,
+    "key_fifths": 0,
+    "clef": "treble"
+  },
+  {
+    "count": 3,
+    "first_measure": 4,
+    "meter": [
+      3,
+      4
+    ],
+    "use_symbols": true,
+    "key_fifths": 1,
+    "clef": "bass"
+  },
+  {
+    "count": 4,
+    "first_measure": 8,
+    "meter": [
+      6,
+      8
+    ],
+    "use_symbols": true,
+    "key_fifths": 2,
+    "clef": "treble"
+  },
+  {
+    "count": 5,
+    "first_measure": 13,
+    "meter": [
+      2,
+      2
+    ],
+    "use_symbols": true,
+    "key_fifths": 3,
+    "clef": "bass"
+  },
+  {
+    "count": 8,
+    "first_measure": 19,
+    "meter": [
+      4,
+      4
+    ],
+    "use_symbols": true,
+    "key_fifths": 0,
+    "clef": "treble"
+  },
+  {
+    "count": 11,
+    "first_measure": 28,
+    "meter": [
+      3,
+      4
+    ],
+    "use_symbols": true,
+    "key_fifths": 1,
+    "clef": "bass"
+  },
+  {
+    "count": 17,
+    "first_measure": 40,
+    "meter": [
+      6,
+      8
+    ],
+    "use_symbols": true,
+    "key_fifths": 2,
+    "clef": "treble"
+  }
+]
