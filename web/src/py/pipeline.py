@@ -814,6 +814,7 @@ def _read_page(path):
     _page_sources.append({'page': _page, 'score': xml, 'layout': boxes, 'meters': meters,
                           'tuplets': read_tuplet_marks(original, boxes),
                           'forwardRepeats': read_forward_repeats(original, boxes),
+                          'noteheads': heads,
                           'accidentals': accidentals,
                           'layoutChanges': layout_changes,
                           'coordinateChanges': _coordinate_audit,
@@ -937,8 +938,10 @@ def _repair_natural_cancellations(score, sources):
     stop a carried override; unknown nearby ink also stops it. Nothing infers a
     cancellation from harmony, scale, expected pitches or completed bar length.
     """
-    marks = {}
+    marks, stable_heads = {}, set()
+    require_stable = any('noteheads' in source for source in sources)
     for source in sources:
+        stable_heads.update(head['id'] for head in source.get('noteheads', []) if head.get('id'))
         for mark in source.get('accidentals', []):
             if not mark.get('head_id'):
                 continue
@@ -962,10 +965,18 @@ def _repair_natural_cancellations(score, sources):
                 kinds = {m['kind'] for m in accepted}
                 if evidence or note.find('accidental') is not None:
                     active.pop(key, None)
+                if require_stable and note.get('id') not in stable_heads:
+                    active.pop(key, None)
+                    continue
                 if kinds == {'natural'} and not (ni == 0 and measure.find('attributes/key') is not None):
                     at = re.search(r'-p(\d+)-(\d+)-(\d+)$', note.get('id', ''))
                     mark = max(accepted, key=lambda m: m['margin'])
-                    if at and abs(float(at[3])-mark['center'][1]) <= .45*mark['unit']:
+                    # A barline/other ink to the left of an intact natural is
+                    # harmless. Unknown ink closer to the head conflicts with
+                    # that sign: clear carry without inventing an accidental.
+                    obstructed = any(m.get('unknown') and m['box'][2] > mark['box'][2]+.1*mark['unit']
+                                     for m in evidence)
+                    if at and not obstructed and abs(float(at[3])-mark['center'][1]) <= .45*mark['unit']:
                         active[key] = mark
                         accidental = note.find('accidental')
                         if accidental is None:

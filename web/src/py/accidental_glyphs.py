@@ -93,6 +93,38 @@ def accidental_candidates(image, staff_boxes, heads):
         _,labels,stats,_ = cv2.connectedComponentsWithStats(clean)
         for label,(x,y,w,h,area) in enumerate(stats[1:],1):
             if not (.8*unit <= h <= 4.5*unit and .12*unit <= w <= 2.3*unit and area >= 6):
+                # A sign touching a slur/stem can be too wide/tall to classify.
+                # Retain only its head-adjacent, vertically straddling ink as a
+                # blocker. A clipped component must never assert a new sign.
+                if area < 6 or h < .8*unit or w < .08*unit:
+                    continue
+                for index,head in enumerate(heads):
+                    if head['staff'] != staff_index:
+                        continue
+                    hx,hy = head['center']
+                    nearby = [other['center'][0] for other in heads
+                              if other['staff'] == staff_index
+                              and other['center'][0] < hx
+                              and abs(other['center'][1]-hy) < 1.5*unit]
+                    # Never borrow the preceding notehead or its stem. Closely
+                    # packed/overlapping heads leave no safe accidental zone.
+                    left_edge = max(hx-2.9*unit, max(nearby)+.65*unit if nearby else -1)
+                    a,b = max(int(x),round(left_edge)-x0), max(int(y),round(hy-1.6*unit)-y0)
+                    c,d = min(int(x+w),round(hx-.55*unit)-x0), min(int(y+h),round(hy+1.6*unit)-y0)
+                    if c <= a or d <= b:
+                        continue
+                    fragment = (labels[b:d,a:c] == label).astype(np.float32)
+                    ys,xs = np.nonzero(fragment)
+                    if (len(xs) < 6 or xs.max()-xs.min()+1 < .08*unit
+                            or ys.max()-ys.min()+1 < .8*unit
+                            or y0+b+ys.min() > hy-.35*unit
+                            or y0+b+ys.max() < hy+.35*unit):
+                        continue
+                    found.append({'staff': staff_index,
+                                  'box': [x0+a,y0+b,x0+c,y0+d],
+                                  'component_box': [x0+int(x),y0+int(y),x0+int(x+w),y0+int(y+h)],
+                                  'head_index': index, 'position': int(head['position']),
+                                  'partial': True, 'ink': fragment})
                 continue
             cx,cy = x0+x+w/2,y0+y+h/2
             choices = []
@@ -104,9 +136,11 @@ def accidental_candidates(image, staff_boxes, heads):
                     choices.append((hx-cx+abs(hy-cy),index))
             if not choices:
                 continue
-            _,index = min(choices)
+            choices.sort()
+            _,index = choices[0]
             found.append({'staff': staff_index, 'box': [x0+int(x),y0+int(y),x0+int(x+w),y0+int(y+h)],
                           'head_index': index, 'position': int(heads[index]['position']),
+                          'ambiguous': len(choices) > 1 and choices[1][0]-choices[0][0] < .35*unit,
                           'ink': (labels[y:y+h,x:x+w] == label).astype(np.float32)})
     return found
 
@@ -124,6 +158,10 @@ def read_accidentals(image, staff_boxes, heads):
     for candidate in accidental_candidates(image,staff_boxes,heads):
         ink=candidate.pop('ink')
         candidate.update(classify_accidental(ink))
+        if candidate.get('partial'):
+            candidate.update(kind=None, unknown=True, reason='connected-or-partial-adjacent-ink')
+        elif candidate.get('ambiguous'):
+            candidate.update(kind=None, unknown=True, reason='ambiguous-head-binding')
         left,top,right,bottom=candidate['box']
         candidate['center']=[(left+right)/2,(top+bottom)/2]
         candidate['head_id']=heads[candidate['head_index']].get('id')

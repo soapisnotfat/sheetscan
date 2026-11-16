@@ -1,15 +1,17 @@
 # Browser converter dependency
 
-The SDK wraps the `v10-source-metadata` recognition policy, PDF rendering, local text OCR, multirest counts and MusicXML annotation. The main homr recognizer weights were not fine-tuned; this fork trains small glyph classifiers and improves the recognition pipeline. Independent varied-cohort qualification is required before claiming the user's 99% target. Development scores and isolated glyph scores are not population accuracy.
+The SDK wraps the `v11-natural-binding` recognition policy, PDF rendering, local text OCR, multirest counts and MusicXML annotation. The main homr recognizer weights were not fine-tuned; this fork trains small glyph classifiers and improves the recognition pipeline. Independent varied-cohort qualification is required before claiming the user's 99% target. Development scores and isolated glyph scores are not population accuracy.
 
 Build a distributable from the explicit public allowlist:
 
 ```sh
 cd web
-npm run build:sdk -- --expected-manifest=../dev-samples/candidates/v10-source-metadata/manifest.json
+npm run build:sdk -- --expected-manifest=../dev-samples/candidates/v11-natural-binding/manifest.json
 ```
 
 The ignored local manifest is a verification input; it is not copied into the package. `dist-sdk/` contains only built code, the three recognition ONNX models, `homr.zip`, and the reviewed tracked public assets. Local regression PDFs, `dev-samples/`, local manifests and source score files are excluded. `public-build.json` records distributable file hashes; the build checks its model/archive and recognition-worker hashes against the frozen candidate when `--expected-manifest` is supplied. `build:public` provides the same allowlist for the standalone app; deployment uses that output rather than arbitrary local `dist/` contents.
+
+Natural cancellation uses an intact source glyph bound to an unambiguous segmented notehead. A connected or partial glyph near a later head can stop a carried natural while preserving the model's pitch; it cannot assert a new accidental. Slur/beam ink entirely above or below the head does not meet this blocker rule. Unresolved head provenance also stops carry. The existing simple single-voice policy and bar reset remain in effect.
 
 The fork is AGPL-3.0; glyph artifacts retain their OFL notices. The package includes `LICENSE`, exact source links in `SOURCE.txt`, and the tracked font licenses/manifests under `licenses/`.
 
