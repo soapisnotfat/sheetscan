@@ -1,8 +1,8 @@
 # Automatic recognition for practice scores
 
-用户的首要需求是：导入 PDF 后，直接得到完整、可练习的谱面，准确率至少达到 99.5%，目标 99.9%。疑点确认、修改音符和拖动音符是兜底功能。不能用大量人工校对来代替自动识别的准确度。
+用户的首要需求是：导入 PDF 后，直接得到完整、可练习的谱面。最新验收目标为未参与训练／调优的多组测试保持约 99% 的自动识别质量，并逐组检查小节、节奏、声部、反复和 tempo；少量孤立单音错误与整段错位须分开报告。疑点确认、修改音符和拖动音符是兜底功能，不能用大量人工校对代替自动准确度。
 
-当前尚未证明达到这个目标。Dripping 的 tempo 修改和 PDF 集成已暂停，准确度研究在此 fork 独立进行。
+当前尚未达到多组独立测试的这个目标。Dripping 的 tempo 修复独立推进；此 fork 提供本地浏览器转换链路与待验收的依赖接口。
 
 ## 先验证什么
 
@@ -10,7 +10,7 @@
 
 “音高识别对”不能代替“谱子识别对”。核心事件必须同时匹配记谱音高、所在小节、拍内位置、时值、声部、延音和连音比例；休止也计入。另行检查声部／小节数量、拍号、反复和明确印出的数字 tempo。整曲不需要修正的比例也要单独报告。
 
-`bench/practice_metrics.py` 提供核心事件的严格比较，不把错位的小节重新对齐来抬高分数。`--gate .995` 要求事件 precision、recall 均达到阈值，并通过结构、拍号、反复和适用的 tempo 检查。它尚未覆盖所有演奏法、力度、歌词和排版细节，不能单独作为“整份乐谱所有元素 99.5%”的认证。
+`bench/practice_metrics.py` 提供核心事件的严格比较，不把错位的小节重新对齐来抬高分数。`--gate .99` 要求事件 precision、recall 均达到阈值，并通过结构、拍号、反复和适用的 tempo 检查。`bench/qualification_v1.py` 补充调号、谱号、octave 与 DC/DS/coda/fine 等演奏语义，beams 单列。未覆盖的演奏法、力度、歌词和排版细节不能被当作已经通过。
 
 仅供 MIDI 播放的隐藏音符、隐藏休止和未印出的 tempo 不应被当作 PDF 可识别的内容；报告会列出这类排除项。未印数字 tempo 时必须保留未知状态，不能凭空填一个数当作识别成功。
 
@@ -38,7 +38,11 @@
 4. 如果错误集中在当前模型无法表达或训练不足的符号，再修改输出编码、训练目标和数据。针对实际字体与萨克斯谱的合成数据和独立标注数据微调，并保留未参与训练的测试谱。
 5. 准确度合格后再优化浏览器启动、内存和速度。WASM、WebGPU、量化和批处理的每项改动都重新比较最终乐谱，不能用速度收益掩盖识别回归。
 
-当前 homr 是可运行的浏览器基线；[其训练记录](https://github.com/liebharc/homr/blob/main/Training.md)提供模型实验与系统级验证。另需实际对比 [copisteria](https://github.com/kobimusic/copisteria) 的页面上下文方案，以及 [Legato](https://arxiv.org/abs/2506.19065) 的整页识别方案。这些是研究候选，尚未在本项目的标准答案测试集上验证，也尚未证明适合目标浏览器的内存与推理预算。
+当前 homr 是可运行的浏览器基线；[其训练记录](https://github.com/liebharc/homr/blob/main/Training.md)提供模型实验与系统级验证。已固定版本实际运行 [Copisteria](https://github.com/kobimusic/copisteria) 2m／28m 与 [Audiveris](https://github.com/Audiveris/audiveris) 5.11，对相同有效开发图像保留原始输出、输入／权重 hashes、命令与 strict 报告；复现入口为 `bench/compare_copisteria.py`、`bench/compare_audiveris.py`。不同模型错误有互补，也有共同五连音错误；GT-assisted oracle union 仅作选择器上限诊断，不是实际自动成绩。
+
+冻结候选 `007577e` 在四份完整开发曲原生流程上匹配 897/900 GT 事件，预测 901 个；同版本完整浏览器流程为 889/900 GT、901 个预测。浏览器钢琴第16小节的五连音数字被预处理粘连到 beam，属于提取／布局覆盖问题；已有的 5 类和音高词表没有因此变成新类别。输入 raster 与 WASM 执行的影响须以同像素实验区分。上述是已参与开发的曲目，不能外推未见谱。
+
+主 homr 网络没有整体微调。新增的小型字形模型只提供 source evidence，详见 `ACCURACY_GLYPHS.md`、`ACCURACY_ACCIDENTALS.md`；形状 logits 不是最终识谱置信概率。浏览器依赖 API、取消／重试与安全打包说明见 `BROWSER_SDK.md`。v7 已冻结供独立分组验收，后续修复另建版本。
 
 ## 复现
 
@@ -54,7 +58,7 @@ node tools/render-practice-case.mjs ../dev-samples/accuracy/challenge/truth.musi
 cd ..
 pdftoppm -r 200 -singlefile -png dev-samples/accuracy/challenge/score.pdf dev-samples/accuracy/challenge/pdf-p1
 python bench/recognize_case.py dev-samples/accuracy/challenge/reading.musicxml dev-samples/accuracy/challenge/pdf-p1.png --read-numbers --printed-tuplets
-python bench/practice_metrics.py dev-samples/accuracy/challenge/truth.musicxml dev-samples/accuracy/challenge/reading.musicxml --gate .995
+python bench/practice_metrics.py dev-samples/accuracy/challenge/truth.musicxml dev-samples/accuracy/challenge/reading.musicxml --gate .99
 ```
 
 渲染脚本需要 Playwright Chromium，或设置 `PLAYWRIGHT_CHANNEL=chrome` 使用已有 Chrome。每次测试使用独立浏览器资料，不读取个人浏览器资料。
@@ -67,7 +71,7 @@ npm run dev
 # 在另一终端运行；端口按实际 dev 地址填写
 node tools/browser-test.mjs chromium http://localhost:5173/ --input=../dev-samples/accuracy/challenge/score.pdf --output=../dev-samples/accuracy/challenge/browser.musicxml --printed-tuplets
 cd ..
-python bench/practice_metrics.py dev-samples/accuracy/challenge/truth.musicxml dev-samples/accuracy/challenge/browser.musicxml --gate .995
+python bench/practice_metrics.py dev-samples/accuracy/challenge/truth.musicxml dev-samples/accuracy/challenge/browser.musicxml --gate .99
 ```
 
 原始私人 PDF、音频、标注和中间结果保留在本机忽略目录。`bench/results/` 只保存可公开测试的报告摘要。源代码和上游许可保持公开；Bravura 生成字形遵循现有 OFL 许可。

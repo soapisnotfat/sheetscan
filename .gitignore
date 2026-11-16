@@ -7,3 +7,5 @@ __pycache__/
 # copied in by web/tools/pack_assets.py
 web/public/models/
 web/public/homr.zip
+web/dist-public/
+web/dist-sdk/
