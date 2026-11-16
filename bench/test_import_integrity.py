@@ -23,6 +23,26 @@ def score(parts=1, notes=1):
 
 
 class IntegrityTests(unittest.TestCase):
+    def test_repeat_line_break_does_not_create_a_musical_bar(self):
+        root = ET.fromstring('<score-partwise><part id="P1"><measure number="1"><note><rest/></note></measure>'
+          '<measure number="2"><print new-system="yes"/><attributes><time><beats>3</beats><beat-type>8</beat-type></time></attributes></measure>'
+          '<measure number="3"><barline location="left"><repeat direction="forward"/></barline><note><rest/></note></measure></part></score-partwise>')
+        self.assertEqual(len(pipeline._remove_repeat_layout_placeholders(root)), 1)
+        measures = root.findall('part/measure')
+        self.assertEqual([m.get('number') for m in measures], ['1', '2'])
+        self.assertEqual(measures[1].findtext('attributes/time/beats'), '3')
+        self.assertIsNotNone(measures[1].find('print'))
+        self.assertEqual(len(root.findall('.//note')), 2)
+
+    def test_repeat_repair_preserves_real_rests_directions_and_multirests(self):
+        for contents in ('<note><rest/></note>', '<direction/>', '<forward><duration>4</duration></forward>',
+                         '<attributes><measure-style><multiple-rest>4</multiple-rest></measure-style></attributes>'):
+            root = ET.fromstring('<score-partwise><part><measure><print new-system="yes"/>'+contents+
+              '</measure><measure><barline><repeat direction="forward"/></barline><note><rest/></note></measure></part></score-partwise>')
+            before = ET.tostring(root)
+            self.assertEqual(pipeline._remove_repeat_layout_placeholders(root), [])
+            self.assertEqual(ET.tostring(root), before)
+
     def test_forward_repeat_before_notes_is_left_side(self):
         root = ET.fromstring('<score-partwise><part id="P1"><measure><attributes/><barline location="right"><repeat direction="forward"/></barline><note><rest/></note></measure></part></score-partwise>')
         self.assertEqual(len(pipeline._repair_forward_repeat_locations(root)), 1)

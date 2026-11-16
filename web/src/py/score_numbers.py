@@ -110,3 +110,40 @@ def rest_number_box(image,box,point):
     center=bx+w/2
     return [max(0,round(center-3*unit)),max(0,round(top-3.4*unit)),
             min(gray.shape[1],round(center+3*unit)),max(0,round(top-.12*unit))]
+
+
+def read_forward_repeats(image, boxes):
+    """Require two full-height bars (thick then thin) and two aligned round dots.
+
+    This reads geometry, not repertoire or expected repeat counts. A single
+    barline, double bar, notehead or pair of staccatos alone is insufficient.
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    found = []
+    for staff, (left, top, right, bottom, *_) in enumerate(boxes):
+        unit = (bottom-top)/4
+        if unit < 3:
+            continue
+        ink = (gray[top:bottom+1, left:right+1] < 150).astype(np.uint8)
+        vertical = cv2.morphologyEx(ink, cv2.MORPH_OPEN, np.ones((round(3.7*unit), 1), np.uint8))
+        _, _, stats, _ = cv2.connectedComponentsWithStats(vertical)
+        bars = sorted([(int(x), int(w)) for x, y, w, h, area in stats[1:]
+                       if h >= 3.6*unit and w <= unit], key=lambda item: item[0])
+        horizontal = cv2.morphologyEx(ink, cv2.MORPH_OPEN, np.ones((1, max(12, round(unit*8))), np.uint8))
+        _, _, shapes, centers = cv2.connectedComponentsWithStats(ink-horizontal)
+        dots = [(float(point[0]), float(point[1])) for (x, y, w, h, area), point in zip(shapes[1:], centers[1:])
+                if .25*unit <= w <= .65*unit and .25*unit <= h <= .65*unit
+                and .65 <= w/h <= 1.5 and .5 <= area/(w*h) <= .95]
+        for (thick, tw), (thin, nw) in zip(bars, bars[1:]):
+            if not (.3*unit <= tw <= .85*unit and nw <= .25*unit and tw >= 2*nw
+                    and .15*unit <= thin-(thick+tw) <= .8*unit):
+                continue
+            upper = [p for p in dots if thin+nw+.1*unit <= p[0] <= thin+nw+1.2*unit and abs(p[1]-1.5*unit) <= .2*unit]
+            lower = [p for p in dots if thin+nw+.1*unit <= p[0] <= thin+nw+1.2*unit and abs(p[1]-2.5*unit) <= .2*unit]
+            pairs = [(a, b) for a in upper for b in lower if abs(a[0]-b[0]) <= .2*unit]
+            if len(pairs) == 1:
+                a, b = pairs[0]
+                found.append({'staff': staff, 'x': round(left+(a[0]+b[0])/2, 2),
+                              'kind': 'forward-repeat', 'bars': [left+thick, left+thin+nw],
+                              'dots': [[round(left+p[0], 2), round(top+p[1], 2)] for p in (a, b)]})
+    return found

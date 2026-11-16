@@ -12,6 +12,10 @@ import pipeline from './py/pipeline.py?raw'
 import scoreNumbers from './py/score_numbers.py?raw'
 import printedTuplets from './py/printed_tuplets.py?raw'
 import tupletTemplates from './py/tuplet_templates.json?raw'
+import tupletGlyphs from './py/tuplet_glyphs.py?raw'
+import tupletClassifier from './py/tuplet_classifier.json?raw'
+import accidentalGlyphs from './py/accidental_glyphs.py?raw'
+import accidentalClassifier from './py/accidental_classifier.json?raw'
 
 const PYODIDE = 'https://cdn.jsdelivr.net/pyodide/v314.0.7/full/'
 const BASE = new URL('..', import.meta.url).href // this file is served one folder below the app
@@ -69,6 +73,10 @@ function init(port) {
     pyodide.FS.writeFile('/lib/python3.14/site-packages/score_numbers.py', scoreNumbers)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/printed_tuplets.py', printedTuplets)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/tuplet_templates.json', tupletTemplates)
+    pyodide.FS.writeFile('/lib/python3.14/site-packages/tuplet_glyphs.py', tupletGlyphs)
+    pyodide.FS.writeFile('/lib/python3.14/site-packages/tuplet_classifier.json', tupletClassifier)
+    pyodide.FS.writeFile('/lib/python3.14/site-packages/accidental_glyphs.py', accidentalGlyphs)
+    pyodide.FS.writeFile('/lib/python3.14/site-packages/accidental_classifier.json', accidentalClassifier)
     pyodide.FS.mkdirTree('/work')
     post('status', { text: 'Starting recognition engine…' })
     const scan = pyodide.runPython('import pipeline; pipeline.scan')

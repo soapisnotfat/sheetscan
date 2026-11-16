@@ -6,7 +6,7 @@
 // --nojspi forces the shared-memory bridge which browsers without WebAssembly JSPI take.
 // Needs `npx playwright install <engine>`.
 import { createHash } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import * as playwright from 'playwright'
 
@@ -25,11 +25,12 @@ const target = new URL(url)
 if (process.argv.includes('--nojspi')) target.searchParams.set('nojspi', '1')
 if (process.argv.includes('--printed-tuplets')) target.searchParams.set('printed-tuplets', '1')
 await page.goto(target.href)
-console.log(engine, browser.version(), await page.evaluate(() => ({
+const features = await page.evaluate(() => ({
   jspi: typeof WebAssembly.Suspending === 'function',
   isolated: crossOriginIsolated,
   memory: navigator.deviceMemory,
-})))
+}))
+console.log(engine, browser.version(), features)
 
 if (input) await page.setInputFiles('#files', resolve(input))
 else await page.click('#sample')
@@ -53,6 +54,23 @@ for (;;) {
     if (output) {
       await mkdir(dirname(resolve(output)), { recursive: true })
       await writeFile(output, state.xml)
+      const rasters = await page.evaluate(async () => Promise.all([...document.querySelectorAll('#scan .page > img')].map(async img => ({
+        width: img.naturalWidth, height: img.naturalHeight,
+        bytes: [...new Uint8Array(await (await fetch(img.src)).arrayBuffer())],
+      }))))
+      const inputs = []
+      for (let i = 0; i < rasters.length; i++) {
+        const raster = rasters[i], bytes = Buffer.from(raster.bytes), path = `${resolve(output)}.page-${i+1}.png`
+        await writeFile(path, bytes)
+        inputs.push({ page: i+1, width: raster.width, height: raster.height, png: path, sha256: createHash('sha256').update(bytes).digest('hex') })
+      }
+      await writeFile(`${resolve(output)}.browser-run.json`, JSON.stringify({
+        sourceUrl: target.href, browser: browser.version(), features, bridge: state.bridge,
+        milliseconds: Date.now()-started,
+        originalInput: input ? { file: resolve(input), sha256: createHash('sha256').update(await readFile(resolve(input))).digest('hex') } : null,
+        rasters: inputs, outputSha256: createHash('sha256').update(state.xml).digest('hex'),
+        harnessSha256: createHash('sha256').update(await readFile(new URL(import.meta.url))).digest('hex'),
+      }, null, 2)+'\n')
     }
     // The same fingerprint bench computes: every note's pitch and duration, in order.
     const notes = [...state.xml.matchAll(/<note[\s\S]*?<\/note>/g)].map(([note]) => {

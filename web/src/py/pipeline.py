@@ -14,8 +14,9 @@ from fractions import Fraction
 
 import cv2
 import numpy as np
-from score_numbers import read_meters, rest_number_box
+from score_numbers import read_meters, rest_number_box, read_forward_repeats
 from printed_tuplets import read_tuplet_marks, tuplet_candidates, apply_tuplet
+from accidental_glyphs import read_accidentals
 
 # homr imports these at module level but only uses them for downloads, PDF
 # rendering and title OCR, none of which this pipeline calls.
@@ -48,6 +49,93 @@ _TRANSFORMER.use_coreml_encoder = False
 _page_sources = []
 _rest_records = []
 _number_reader = None
+_coordinate_audit = []
+
+
+def _reassociate_note_coordinates(result, staff, transform=lambda point: point):
+    """Replace unreliable attention points only with an unambiguous head match.
+
+    Musical order and pitch stay untouched. A monotone complete sequence of
+    decoded diatonic pitches must match segmented head positions with one fixed
+    clef offset. Long sequences tolerate at most 5% pitch disagreement (capped
+    at two) while preserving those decoded pitches. At most two surplus detector
+    heads may be skipped. Chords, missing heads and duplicate matches abstain.
+    """
+    if staff.is_grandstaff or any(s.rhythm.startswith('chord') for s in result):
+        return None
+    decoded = [s for s in result if s.rhythm.startswith('note_')]
+    heads = sorted(staff.get_notes(), key=lambda note: note.center[0])
+    if not decoded or not 0 <= len(heads)-len(decoded) <= 2:
+        return None
+    pitches = []
+    for symbol in decoded:
+        match = re.fullmatch(r'([A-G])(-?\d+)', symbol.pitch)
+        if match is None:
+            return None
+        pitches.append(int(match[2])*7+'CDEFGAB'.index(match[1]))
+    surplus = len(heads)-len(decoded)
+    offsets = {pitches[0]-head.position for head in heads[:surplus+1]}
+    matches = []
+    for offset in offsets:
+        n, m, infinite = len(decoded), len(heads), len(decoded)+1
+        before = np.full((n+1, m+1), infinite, np.int32)
+        before[0, 0] = 0
+        for i in range(n+1):
+            for j in range(m):
+                before[i, j+1] = min(before[i, j+1], before[i, j])
+                if i < n:
+                    error = pitches[i]-heads[j].position != offset
+                    before[i+1, j+1] = min(before[i+1, j+1], before[i, j]+error)
+        after = np.full((n+1, m+1), infinite, np.int32)
+        after[n] = 0
+        for i in range(n-1, -1, -1):
+            for j in range(m-1, -1, -1):
+                error = pitches[i]-heads[j].position != offset
+                after[i, j] = min(after[i, j+1], error+after[i+1, j+1])
+        matches.append((int(before[n, m]), offset, before, after))
+    matches.sort(key=lambda item: item[0])
+    if (not matches or matches[0][0] > min(2, len(decoded)//20)
+            or len(matches) > 1 and matches[0][0] == matches[1][0]):
+        return None
+    disagreements, offset, before, after = matches[0]
+    indices = {}
+    for i in range(len(decoded)):
+        choices = [j for j in range(len(heads)) if before[i, j]+after[i+1, j+1]
+                   + (pitches[i]-heads[j].position != offset) == disagreements]
+        if len(choices) == 1:
+            indices[i] = choices[0]
+    close = set()
+    for (i, a), (k, b) in zip(list(indices.items()), list(indices.items())[1:]):
+        if heads[b].center[0]-heads[a].center[0] < .3*staff.average_unit_size:
+            close.update((i, k))
+    indices = {i: j for i, j in indices.items() if i not in close}
+    if len(indices)*5 < len(decoded)*4:
+        return None
+    changes = []
+    for i, index in indices.items():
+        symbol = decoded[i]
+        old = symbol.image_coordinates
+        new = transform(heads[index].center)
+        symbol.image_coordinates = new
+        changes.append({'pitch': symbol.pitch, 'rhythm': symbol.rhythm,
+                        'attention': [round(float(v), 2) for v in old] if old is not None else None,
+                        'head': [round(float(v), 2) for v in new]})
+    return {'kind': 'unique-monotone-notehead-match', 'diatonicOffset': offset,
+            'pitchDisagreements': disagreements,
+            'stableAssociations': len(indices), 'ambiguousNotesUnchanged': len(decoded)-len(indices),
+            'decodedNotes': len(decoded), 'detectedHeads': len(heads), 'notes': changes}
+
+
+_parse_staff_image_geometry_base = staff_parsing.parse_staff_image
+def _parse_staff_image_with_geometry(debug, index, staff, image, regions, config, page_to_input_image=lambda p: p):
+    result = _parse_staff_image_geometry_base(debug, index, staff, image, regions, config, page_to_input_image)
+    audit = _reassociate_note_coordinates(result, staff, page_to_input_image)
+    if audit:
+        _coordinate_audit.append({'staffIndex': index, **audit})
+    return result
+
+
+staff_parsing.parse_staff_image = _parse_staff_image_with_geometry
 
 
 class NonMusicPage(ValueError):
@@ -524,9 +612,10 @@ def _staff_boxes(rows, to_input):
 
 def _read_page(path):
     """One page image -> (MusicXML <score-partwise> element, staff boxes)."""
-    global _line_above, _rest_records
+    global _line_above, _rest_records, _coordinate_audit
     _line_above = None
     _rest_records = []
+    _coordinate_audit = []
     try:
         rows, image, debug, _, _, to_input = detect_staffs_in_image(path, _CONFIG)
     except Exception as error:
@@ -543,9 +632,37 @@ def _read_page(path):
     for symbol in (s for voice in voices for s in voice):
         if symbol.image_coordinates:  # so far in the resized page homr works on
             symbol.image_coordinates = to_input(symbol.image_coordinates)
+    for record in _coordinate_audit:
+        record['coordinateSpace'] = 'input-image-pixels'
+        for note in record['notes']:
+            for key in ('attention', 'head'):
+                if note[key] is not None:
+                    note[key] = [round(float(v), 2) for v in to_input(note[key])]
     xml = music_xml_generator.generate_xml(XmlGeneratorArguments(False, None, None), voices, "")
+    layout_changes = _remove_repeat_layout_placeholders(xml)
     boxes = _staff_boxes(rows, to_input)
     original = cv2.imread(path)
+    stable = [note['head'] for record in _coordinate_audit for note in record['notes']]
+    note_points = []
+    for note in xml.findall('.//note'):
+        at = re.search(r'-p(\d+)-(\d+)-(\d+)$', note.get('id', ''))
+        if at:
+            _, x, y = map(int, at.groups())
+            # Source IDs round to whole input pixels; truncation would discard
+            # valid subpixel heads (e.g. y1227.61 is encoded as y1228).
+            if any(abs(x-hx) <= .51 and abs(y-hy) <= .51 for hx, hy in stable):
+                note_points.append((x, y, note.get('id')))
+    heads = []
+    for row in rows:
+        for staff in row.staffs:
+            for head in staff.get_notes():
+                x, y = map(float, to_input(head.center))
+                si = min(range(len(boxes)), key=lambda i: max(boxes[i][1]-y, y-boxes[i][3], 0))
+                unit = (boxes[si][3]-boxes[si][1])/4
+                ids = [name for px, py, name in note_points if abs(px-x) < .15*unit and abs(py-y) < .15*unit]
+                heads.append({'staff': si, 'center': [x, y], 'position': head.position,
+                              'id': ids[0] if len(ids) == 1 else None})
+    accidentals = read_accidentals(original, boxes, heads)
     meters = read_meters(original, boxes)
     parents = {child: parent for parent in xml.iter() for child in parent}
     rests, rest_changes = [], []
@@ -572,6 +689,10 @@ def _read_page(path):
                 source['count'] = reading['value']
     _page_sources.append({'page': _page, 'score': xml, 'layout': boxes, 'meters': meters,
                           'tuplets': read_tuplet_marks(original, boxes),
+                          'forwardRepeats': read_forward_repeats(original, boxes),
+                          'accidentals': accidentals,
+                          'layoutChanges': layout_changes,
+                          'coordinateChanges': _coordinate_audit,
                           'rests': rests, 'restChanges': rest_changes,
                           'inferredFirst': [_first_time_is_inferred(voice) for voice in voices]})
     return xml, boxes
@@ -596,6 +717,34 @@ def _order_children(score):
             element[:] = sorted(element, key=lambda child: rank.get(child.tag, len(rank)))  # stable
 
 
+def _remove_repeat_layout_placeholders(score):
+    """Discard only layout-only records created before a new-system repeatStart.
+
+    MusicXML print/attributes belong to the next musical measure. homr can flush
+    them into a zero-event measure when repeatStart follows a line break. Carry
+    the header forward; never remove a rest, direction, forward or sounding bar.
+    """
+    changes = []
+    for part in score.findall('part'):
+        part_changed = False
+        measures = part.findall('measure')
+        for old, following in zip(measures, measures[1:]):
+            if (old.find('print') is None or not len(old)
+                    or any(child.tag not in ('print', 'attributes') for child in old)
+                    or old.find('.//measure-style') is not None
+                    or following.find('barline/repeat[@direction="forward"]') is None):
+                continue
+            for index, child in enumerate(list(old)):
+                following.insert(index, child)
+            part.remove(old)
+            part_changed = True
+            changes.append({'part': part.get('id'), 'number': old.get('number'), 'kind': 'repeat-layout-placeholder'})
+        if part_changed:
+            for index, measure in enumerate(part.findall('measure'), 1):
+                measure.set('number', str(index))
+    return changes
+
+
 def _repair_forward_repeat_locations(score):
     """homr emits repeatStart before the new bar's notes but labels it right.
 
@@ -614,6 +763,97 @@ def _repair_forward_repeat_locations(score):
                         and any(child.tag == 'note' for child in children[position+1:])):
                     barline.set('location', 'left')
                     changes.append({'part': part.get('id'), 'measure': index, 'kind': 'forward-repeat-location'})
+    return changes
+
+
+def _repair_printed_forward_repeats(score, sources):
+    """Attach a verified source mark only to a unique following measure start."""
+    changes = []
+    for source in sources:
+        boxes = source['layout']
+        for mark in source.get('forwardRepeats', []):
+            unit = (boxes[mark['staff']][3]-boxes[mark['staff']][1])/4
+            possible = []
+            for part in score.findall('part'):
+                for index, measure in enumerate(part.findall('measure'), 1):
+                    points = []
+                    for note in measure.findall('note'):
+                        at = re.search(r'-p(\d+)-(\d+)-(\d+)$', note.get('id', ''))
+                        if at is None:
+                            continue
+                        page, x, y = map(int, at.groups())
+                        if page != source['page']:
+                            continue
+                        staff = min(range(len(boxes)), key=lambda i: max(boxes[i][1]-y, y-boxes[i][3], 0))
+                        if staff == mark['staff']:
+                            points.append(x)
+                    if points and mark['x'] < min(points) < mark['x']+6*unit:
+                        possible.append((min(points)-mark['x'], part, measure, index))
+            possible.sort(key=lambda item: item[0])
+            if not possible or len(possible) > 1 and possible[1][0]-possible[0][0] < .5*unit:
+                continue
+            _, part, measure, index = possible[0]
+            if measure.find('barline/repeat[@direction="forward"]') is not None:
+                continue
+            barline = ET.Element('barline', location='left')
+            ET.SubElement(barline, 'repeat', direction='forward')
+            at = next((i for i, item in enumerate(measure) if item.tag in ('note', 'backup', 'forward')), len(measure))
+            measure.insert(at, barline)
+            changes.append({'part': part.get('id'), 'measure': index, 'kind': 'printed-forward-repeat',
+                            'page': source['page'], 'evidence': mark})
+    return changes
+
+
+def _repair_natural_cancellations(score, sources):
+    """Use explicit natural ink and stable segmented-head provenance.
+
+    Conservative first policy: only simple single-voice measures, no key-header
+    first note, and only natural cancellations. Other recognized local signs
+    stop a carried override; unknown nearby ink also stops it. Nothing infers a
+    cancellation from harmony, scale, expected pitches or completed bar length.
+    """
+    marks = {}
+    for source in sources:
+        for mark in source.get('accidentals', []):
+            if not mark.get('head_id'):
+                continue
+            mark = {**mark, 'page': source['page']}
+            box = source['layout'][mark['staff']]
+            mark['unit'] = (box[3]-box[1])/4
+            marks.setdefault(mark['head_id'], []).append(mark)
+    changes = []
+    for part in score.findall('part'):
+        for index, measure in enumerate(part.findall('measure'), 1):
+            notes = [n for n in measure.findall('note') if n.find('pitch') is not None]
+            if (measure.find('backup') is not None or measure.find('forward') is not None
+                    or len({(n.findtext('voice', '1'), n.findtext('staff', '1')) for n in notes}) != 1):
+                continue
+            active = {}
+            for ni, note in enumerate(notes):
+                pitch = note.find('pitch')
+                key = (note.findtext('staff', '1'), pitch.findtext('step'), pitch.findtext('octave'))
+                evidence = marks.get(note.get('id'), [])
+                accepted = [m for m in evidence if not m.get('unknown') and m.get('kind')]
+                kinds = {m['kind'] for m in accepted}
+                if evidence or note.find('accidental') is not None:
+                    active.pop(key, None)
+                if kinds == {'natural'} and not (ni == 0 and measure.find('attributes/key') is not None):
+                    at = re.search(r'-p(\d+)-(\d+)-(\d+)$', note.get('id', ''))
+                    mark = max(accepted, key=lambda m: m['margin'])
+                    if at and abs(float(at[3])-mark['center'][1]) <= .45*mark['unit']:
+                        active[key] = mark
+                        accidental = note.find('accidental')
+                        if accidental is None:
+                            accidental = ET.SubElement(note, 'accidental')
+                        accidental.text = 'natural'
+                if key in active:
+                    old = Fraction(pitch.findtext('alter', '0'))
+                    if old:
+                        for alteration in list(pitch.findall('alter')):
+                            pitch.remove(alteration)
+                        changes.append({'part': part.get('id'), 'measure': index, 'note': note.get('id'),
+                                        'kind': 'printed-natural-cancellation', 'fromAlter': str(old),
+                                        'toAlter': '0', 'evidence': active[key]})
     return changes
 
 
@@ -657,7 +897,12 @@ def scan(paths, progress=lambda done, total: None, number_reader=None, printed_t
     _number_reader = None
     merged = _merge_pages(scores)
     numeric_audit = _repair_meters(merged, _page_sources)
+    numeric_audit['layoutChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('layoutChanges', [])]
+    numeric_audit['coordinateChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('coordinateChanges', [])]
     numeric_audit['repeatLocationChanges'] = _repair_forward_repeat_locations(merged)
+    numeric_audit['printedRepeatChanges'] = _repair_printed_forward_repeats(merged, _page_sources)
+    numeric_audit['naturalChanges'] = _repair_natural_cancellations(merged, _page_sources)
+    numeric_audit['accidentalCandidates'] = [{'page': source['page'], **mark} for source in _page_sources for mark in source.get('accidentals', [])]
     candidates = tuplet_candidates(merged, _page_sources)
     numeric_audit['tupletCandidates'] = candidates
     numeric_audit['tupletsApplied'] = [apply_tuplet(merged, candidate) for candidate in candidates] if printed_tuplets else []
