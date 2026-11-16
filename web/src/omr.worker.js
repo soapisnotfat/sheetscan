@@ -11,6 +11,8 @@ import ortShim from './py/ort_shim.py?raw'
 import pipeline from './py/pipeline.py?raw'
 import scoreNumbers from './py/score_numbers.py?raw'
 import staffCoverage from './py/staff_coverage.py?raw'
+import sourceRhythm from './py/source_rhythm.py?raw'
+import beamEvidence from './py/beam_evidence.py?raw'
 import printedTuplets from './py/printed_tuplets.py?raw'
 import tupletTemplates from './py/tuplet_templates.json?raw'
 import tupletGlyphs from './py/tuplet_glyphs.py?raw'
@@ -73,6 +75,8 @@ function init(port) {
     pyodide.FS.writeFile('/lib/python3.14/site-packages/pipeline.py', pipeline)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/score_numbers.py', scoreNumbers)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/staff_coverage.py', staffCoverage)
+    pyodide.FS.writeFile('/lib/python3.14/site-packages/source_rhythm.py', sourceRhythm)
+    pyodide.FS.writeFile('/lib/python3.14/site-packages/beam_evidence.py', beamEvidence)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/printed_tuplets.py', printedTuplets)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/tuplet_templates.json', tupletTemplates)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/tuplet_glyphs.py', tupletGlyphs)

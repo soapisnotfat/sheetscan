@@ -18,6 +18,7 @@ from score_numbers import read_meters, rest_number_box, read_forward_repeats, re
 from printed_tuplets import read_tuplet_marks, tuplet_candidates, apply_tuplet
 from accidental_glyphs import read_accidentals
 from staff_coverage import choose_staff_region
+import source_rhythm
 
 # homr imports these at module level but only uses them for downloads, PDF
 # rendering and title OCR, none of which this pipeline calls.
@@ -54,6 +55,8 @@ _coordinate_audit = []
 _raw_heads = []
 _coverage_context = None
 _coverage_audit = []
+_source_rhythm_context = None
+_source_rhythm_enabled = False
 
 
 _predict_symbols_coverage_base = homr_main.predict_symbols
@@ -162,6 +165,8 @@ def _reassociate_note_coordinates(result, staff, transform=lambda point: point):
 _parse_staff_image_geometry_base = staff_parsing.parse_staff_image
 def _parse_staff_image_with_geometry(debug, index, staff, image, regions, config, page_to_input_image=lambda p: p):
     result = _parse_staff_image_geometry_base(debug, index, staff, image, regions, config, page_to_input_image)
+    if _source_rhythm_context is not None:
+        source_rhythm.mark_staff(result, staff, _source_rhythm_context)
     audit = _reassociate_note_coordinates(result, staff, page_to_input_image)
     if audit:
         _coordinate_audit.append({'staffIndex': index, **audit})
@@ -169,6 +174,16 @@ def _parse_staff_image_with_geometry(debug, index, staff, image, regions, config
 
 
 staff_parsing.parse_staff_image = _parse_staff_image_with_geometry
+
+
+_clean_up_voice_source_base = staff_parsing._clean_up_voice
+def _clean_up_voice_with_source_rhythm(symbols):
+    if _source_rhythm_context is not None:
+        symbols = source_rhythm.constrain(symbols, _source_rhythm_context)
+    return _clean_up_voice_source_base(symbols)
+
+
+staff_parsing._clean_up_voice = _clean_up_voice_with_source_rhythm
 
 
 class NonMusicPage(ValueError):
@@ -721,12 +736,13 @@ def _staff_boxes(rows, to_input):
 
 def _read_page(path):
     """One page image -> (MusicXML <score-partwise> element, staff boxes)."""
-    global _line_above, _rest_records, _coordinate_audit, _raw_heads, _coverage_context, _coverage_audit
+    global _line_above, _rest_records, _coordinate_audit, _raw_heads, _coverage_context, _coverage_audit, _source_rhythm_context
     _line_above = None
     _rest_records = []
     _coordinate_audit = []
     _raw_heads = []
     _coverage_audit = []
+    source_context = None
     try:
         rows, image, debug, _, _, to_input = detect_staffs_in_image(path, _CONFIG)
     except Exception as error:
@@ -738,9 +754,13 @@ def _read_page(path):
         if not _has_printed_staff(image, rows):
             raise NonMusicPage("No supported five-line music staff found")
         _coverage_context = (image, [staff for row in rows for staff in row.staffs])
+        if _source_rhythm_enabled:
+            source_context = source_rhythm.prepare_context(cv2.imread(path), rows, _raw_heads, to_input, _page)
+            _source_rhythm_context = source_context
         voices = staff_parsing.parse_staffs(debug, rows, image, config=_TRANSFORMER)
     finally:
         _coverage_context = None
+        _source_rhythm_context = None
         debug.clean_debug_files_from_previous_runs()
     for symbol in (s for voice in voices for s in voice):
         if symbol.image_coordinates:  # so far in the resized page homr works on
@@ -819,6 +839,9 @@ def _read_page(path):
                           'layoutChanges': layout_changes,
                           'coordinateChanges': _coordinate_audit,
                           'staffCoverageChanges': _coverage_audit,
+                          'sourceRhythmChanges': source_context['changes'] if source_context else [],
+                          'sourceRhythmDiagnostics': source_context['diagnostics'] if source_context else [],
+                          'sourceRhythmEvidence': {key: source_context[key] for key in ('beams','tuplets','meters','rawHeads','rawSymbols','boxes','descriptors')} if source_context else {},
                           'rests': rests, 'restChanges': rest_changes,
                           'inferredFirst': [_first_time_is_inferred(voice) for voice in voices]})
     return xml, boxes
@@ -1013,9 +1036,10 @@ def _give_every_staff_a_clef(score):
 def scan(paths, progress=lambda done, total: None, number_reader=None, printed_tuplets=False):
     """Recognise each page image; pages without music are skipped. Returns MusicXML text.
     The staff boxes of every page ride along as the miscellaneous field "staff-layout"."""
-    global _page, _page_sources, _number_reader
+    global _page, _page_sources, _number_reader, _source_rhythm_enabled
     _page_sources = []
     _number_reader = number_reader
+    _source_rhythm_enabled = printed_tuplets
     scores, layout = [], [[] for _ in paths]
     for _page, path in enumerate(paths):
         progress(_page, len(paths))
@@ -1034,6 +1058,8 @@ def scan(paths, progress=lambda done, total: None, number_reader=None, printed_t
     merged = _merge_pages(scores)
     numeric_audit = _repair_meters(merged, _page_sources)
     numeric_audit['layoutChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('layoutChanges', [])]
+    numeric_audit['sourceRhythmChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('sourceRhythmChanges', [])]
+    numeric_audit['sourceRhythmDiagnostics'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('sourceRhythmDiagnostics', [])]
     numeric_audit['coordinateChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('coordinateChanges', [])]
     numeric_audit['staffCoverageChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('staffCoverageChanges', [])]
     numeric_audit['repeatLocationChanges'] = _repair_forward_repeat_locations(merged)
