@@ -55,5 +55,6 @@ recognition, then checks SDK cancellation/retry, retained host state, no new ser
 worker and static GET-only local serving. It compares written pitch (including
 alter), key, voice, duration, meter, staff and form against the same parent base.
 The app editor's existing redundant accidental-display normalization is recorded
-separately from pitch semantics. Production qualification requires the sealed
+separately from pitch semantics. Source-coordinate note IDs are retained in the
+original output and excluded from the written-music signature. Production qualification requires the sealed
 receipt, not a helper-only pass.

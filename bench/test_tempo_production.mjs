@@ -31,16 +31,19 @@ const inspect=(page,xml)=>page.evaluate(xml=>{
  const d=new DOMParser().parseFromString(xml,'application/xml')
  // Score's app editor may normalize redundant printed <accidental> tags. Pitch
  // <alter> remains in this signature; display tags are reported separately.
- const core=[...d.querySelectorAll('score-partwise > part')].map(p=>({id:p.id,measures:[...p.querySelectorAll(':scope > measure')].map(m=>({number:m.getAttribute('number'),implicit:m.getAttribute('implicit'),events:[...m.children].filter(e=>['note','attributes','backup','forward','barline'].includes(e.tagName)).map(e=>{const copy=e.cloneNode(true);if(e.tagName==='note')copy.querySelectorAll(':scope > accidental').forEach(a=>a.remove());return copy.outerHTML})}))}))
+ // Source pixel IDs are provenance, not written music (a detector may round y
+ // one pixel differently). They remain in the saved original XML and audit.
+ const core=[...d.querySelectorAll('score-partwise > part')].map(p=>({id:p.id,measures:[...p.querySelectorAll(':scope > measure')].map(m=>({number:m.getAttribute('number'),implicit:m.getAttribute('implicit'),events:[...m.children].filter(e=>['note','attributes','backup','forward','barline'].includes(e.tagName)).map(e=>{const copy=e.cloneNode(true);if(e.tagName==='note'){copy.removeAttribute('id');copy.querySelectorAll(':scope > accidental').forEach(a=>a.remove())}return copy.outerHTML})}))}))
  return {core,displayAccidentals:[...d.querySelectorAll('note > accidental')].map(e=>({id:e.parentNode.id,value:e.textContent})),tempos:[...d.querySelectorAll('part > measure > direction:has(metronome)')].map(e=>({part:e.closest('part').id,measure:e.closest('measure').getAttribute('number'),measureIndex:[...e.closest('part').querySelectorAll(':scope > measure')].indexOf(e.closest('measure'))+1,unit:e.querySelector('beat-unit').textContent,dotted:!!e.querySelector('beat-unit-dot'),bpm:+e.querySelector('per-minute').textContent,quarterSound:+e.querySelector('sound')?.getAttribute('tempo')})),metadata:JSON.parse(d.querySelector('miscellaneous-field[name="metadata-audit"]')?.textContent??'[]')}
 },xml)
 const receipt={browser:browser.version(),baseline,runs:[],requests}
 try{
- for(let i=0;i<cases.length;i++){
+ for(let i=Number(arg('start')??0);i<cases.length;i++){
   const c=cases[i],dir=path.join(out,String(i));await fs.mkdir(dir,{recursive:true})
   const input=c.sourcePDF??c.file,bytes=await fs.readFile(input),page=await browser.newPage(),network=[]
+  page.on('pageerror',e=>console.error('app page error:',e.message))
   page.on('request',r=>network.push({method:r.method(),url:r.url(),type:r.resourceType()}))
-  await page.goto(base+'/?printed-tuplets=1');await page.setInputFiles('#files',input)
+  await page.goto(base+'/?printed-tuplets=1');await page.waitForFunction(()=>window.sheetscan,null,{timeout:30000});await page.setInputFiles('#files',input)
   await page.waitForFunction(()=>(document.body.dataset.view==='work'&&window.sheetscan?.xml)||document.getElementById('unsupported')?.textContent,null,{timeout:900000})
   const xml=await page.evaluate(()=>window.sheetscan.xml);if(!xml)throw Error(await page.locator('#unsupported').textContent())
   await fs.writeFile(path.join(dir,'app.musicxml'),xml)
@@ -52,7 +55,7 @@ try{
   run.coreSHA256=hash(JSON.stringify(observed.core));delete observed.core
   await page.close()
   if(sdk&&!baseline){
-   const host=await browser.newPage();host.on('request',r=>network.push({method:r.method(),url:r.url(),type:r.resourceType()}));await host.goto(base+'/sdk/host')
+   const host=await browser.newPage();host.on('request',r=>network.push({method:r.method(),url:r.url(),type:r.resourceType()}));host.on('console',m=>{if(m.text().startsWith('tempo-sdk '))console.log(m.text())});await host.goto(base+'/sdk/host')
    const result=await host.evaluate(async({bytes,name})=>{
     const {createScoreConverter}=await import('/sdk/sheetscan.js'),file=new File([Uint8Array.from(atob(bytes),c=>c.charCodeAt(0))],name,{type:'application/pdf'})
     const converter=createScoreConverter(),before=location.href,sw=(await navigator.serviceWorker.getRegistrations()).length;window.hostProject={retained:7}
@@ -60,7 +63,7 @@ try{
     try{await converter.convert([file],{onProgress:p=>{if(p.phase==='recognizing')converter.cancel()}})}catch(e){cancelled=e.name==='AbortError'}
     if(!cancelled)throw Error('Cancellation failed')
     const phases=[];try{
-     const r=await converter.convert([file],{onProgress:p=>{if(phases.at(-1)!==p.phase)phases.push(p.phase)}})
+     const r=await converter.convert([file],{onProgress:p=>{if(phases.at(-1)!==p.phase){phases.push(p.phase);console.log('tempo-sdk '+p.phase)}}})
      return {xml:r.musicxml,audit:r.audit,bridge:r.bridge,phases,cancelledAndRetried:cancelled,hostUnchanged:before===location.href&&window.hostProject.retained===7,serviceWorkersAdded:(await navigator.serviceWorker.getRegistrations()).length-sw}
     }finally{converter.close()}
    },{bytes:bytes.toString('base64'),name:path.basename(input)})
