@@ -20,6 +20,9 @@ from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
 
+METRIC_VERSION = 'practice-v2-voice-bijection'
+MAX_MAPPED_VOICES = 16
+
 
 def _duration(item, divisions):
     return Fraction(item.findtext('duration', '0'))/divisions
@@ -110,8 +113,112 @@ def _counts(truth, reading):
             'f1': 2*matched/(nt+nr) if nt+nr else 1.0}
 
 
+def _maximum_assignment(weights):
+    """One-to-one maximum-weight assignment, padded square; O(n^3), no dependency."""
+    size = len(weights)
+    u, v, occupied, previous = [0]*(size+1), [0]*(size+1), [0]*(size+1), [0]*(size+1)
+    for row in range(1, size+1):
+        occupied[0], column = row, 0
+        minimum, used = [float('inf')]*(size+1), [False]*(size+1)
+        while True:
+            used[column] = True
+            current, delta, following = occupied[column], float('inf'), 0
+            for candidate in range(1, size+1):
+                if used[candidate]:
+                    continue
+                cost = -weights[current-1][candidate-1]-u[current]-v[candidate]
+                if cost < minimum[candidate]:
+                    minimum[candidate], previous[candidate] = cost, column
+                if minimum[candidate] < delta:
+                    delta, following = minimum[candidate], candidate
+            for candidate in range(size+1):
+                if used[candidate]:
+                    u[occupied[candidate]] += delta
+                    v[candidate] -= delta
+                else:
+                    minimum[candidate] -= delta
+            column = following
+            if not occupied[column]:
+                break
+        while True:
+            following = previous[column]
+            occupied[column] = occupied[following]
+            column = following
+            if column == 0:
+                break
+    assignment = [None]*size
+    for column in range(1, size+1):
+        assignment[occupied[column]-1] = column-1
+    return assignment
+
+
+def _voice_normalized(truth, reading):
+    """Rename labels only: one stable bijection per part over the complete score.
+
+    Staff, bar, onset, pitch, duration, ties and tuplets stay fixed. The mapping
+    cannot move a note or change which voice owns it within the piece. Label
+    merges/splits remain unmatched. No per-bar or per-note alignment is allowed.
+    """
+    truth_maps, reading_maps, parts = {}, {}, []
+    supported = True
+    for part in range(max(len(truth['bars']), len(reading['bars']))):
+        def fingerprints(score):
+            voices = {}
+            for category in ('events', 'graces'):
+                for event, count in score[category].items():
+                    if event[0] == part:
+                        voices.setdefault(event[2], Counter())[(category, *event[:2], *event[3:])] += count
+            return voices
+        a, b = fingerprints(truth), fingerprints(reading)
+        expected, found = sorted(a), sorted(b)
+        size = max(len(expected), len(found))
+        info = {'partIndex': part+1, 'truthLabels': expected, 'readingLabels': found,
+                'labelCardinalityMatches': len(expected) == len(found), 'pairs': [], 'unmatchedReadingLabels': []}
+        if size > MAX_MAPPED_VOICES:
+            supported = False
+            info.update(supported=False, reason=f'more than {MAX_MAPPED_VOICES} active voice labels')
+            parts.append(info)
+            continue
+        weights = [[sum((b[found[i]] & a[expected[j]]).values()) if i < len(found) and j < len(expected) else 0
+                    for j in range(size)] for i in range(size)]
+        assignment = _maximum_assignment(weights)
+        overlap = sum(weights[i][assignment[i]] for i in range(len(found)))
+        if len(found) > 1 and len(expected) > 1 and overlap == 0:
+            supported = False
+            info.update(supported=False, reason='no exact musical overlap establishes a multi-voice correspondence')
+            parts.append(info)
+            continue
+        truth_maps[part] = {label: index for index, label in enumerate(expected)}
+        reading_maps[part] = {}
+        for index, label in enumerate(found):
+            match = assignment[index]
+            reading_maps[part][label] = match if match < len(expected) else -index-1
+            if match < len(expected):
+                info['pairs'].append({'reading': label, 'truth': expected[match], 'exactEventOverlap': weights[index][match]})
+            else:
+                info['unmatchedReadingLabels'].append(label)
+        info['supported'] = True
+        parts.append(info)
+    details = {'algorithm': 'global-part-voice-bijection-v1', 'supported': supported,
+               'maxVoicesPerPart': MAX_MAPPED_VOICES, 'parts': parts,
+               'labelCardinalityMatches': all(part['labelCardinalityMatches'] for part in parts)}
+    if not supported:
+        return truth, reading, details
+    def rename(score, maps):
+        result = dict(score)
+        for category in ('events', 'attacks', 'graces'):
+            result[category] = Counter()
+            for event, count in score[category].items():
+                renamed = (*event[:2], maps[event[0]][event[2]], *event[3:])
+                result[category][renamed] += count
+        return result
+    return rename(truth, truth_maps), rename(reading, reading_maps), details
+
+
 def compare(truth_root, reading_root):
     truth, reading = read(truth_root), read(reading_root)
+    raw_events = _counts(truth['events'], reading['events'])
+    truth, reading, voice_normalization = _voice_normalized(truth, reading)
     events = _counts(truth['events'], reading['events'])
     bars = set(truth['meters']) | set(reading['meters'])
     bar_errors = []
@@ -122,7 +229,12 @@ def compare(truth_root, reading_root):
             bar_errors.append({'partIndex': key[0]+1, 'measureIndex': key[1]+1,
                                'events': _counts(a, b), 'meterMatches': truth['meters'].get(key) == reading['meters'].get(key)})
     rest = lambda counter: Counter({event: n for event, n in counter.items() if event[6] == 'rest'})
-    return {'scope': 'strict written notation at original part/bar/voice/onset; no bar alignment',
+    return {'metricVersion': METRIC_VERSION,
+            'scope': 'strict written notation at original part/bar/staff/onset; one global voice-label bijection per part; no bar alignment',
+            'voiceNormalization': voice_normalization,
+            'rawVoiceLabelEvents': raw_events,
+            'canonicalVoiceEvents': events if voice_normalization['supported'] else None,
+            'eventScoreMode': 'canonical-global-voice-labels' if voice_normalization['supported'] else 'raw-fallback-unsupported',
             'events': events, 'attackPitchDiagnostic': _counts(truth['attacks'], reading['attacks']),
             'rests': _counts(rest(truth['events']), rest(reading['events'])),
             'graces': _counts(truth['graces'], reading['graces']),
@@ -138,6 +250,8 @@ def compare(truth_root, reading_root):
 
 def passes(report, threshold):
     return (report['events']['truth'] > 0 and report['events']['precision'] >= threshold and report['events']['recall'] >= threshold
+            and report.get('voiceNormalization', {}).get('supported', False)
+            and report.get('voiceNormalization', {}).get('labelCardinalityMatches', False)
             and report['graces']['precision'] >= threshold and report['graces']['recall'] >= threshold
             and report['structureMatches'] and report['meterMatches']
             and report['formMatches']
