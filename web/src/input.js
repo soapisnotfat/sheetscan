@@ -24,11 +24,14 @@ async function* pdfPages(file) {
     // "print" renders without waiting for animation frames, which stop in a background tab.
     await page.render({ canvasContext: context, canvas, viewport, intent: 'print' }).promise
     // Text items in page-image pixels: x/y is the start of the baseline, h the font height.
-    const text = (await page.getTextContent()).items
+    const { items, styles } = await page.getTextContent()
+    const text = items
       .filter((item) => item.str?.trim())
       .map((item) => {
         const t = pdfjs.Util.transform(viewport.transform, item.transform)
-        return { str: item.str, x: t[4], y: t[5], h: Math.hypot(t[2], t[3]), w: item.width * viewport.scale }
+        return { str: item.str, x: t[4], y: t[5], h: Math.hypot(t[2], t[3]), w: item.width * viewport.scale,
+          source: 'pdf-text', fontName: item.fontName, fontFamily: styles[item.fontName]?.fontFamily,
+          raw: { str: item.str, transform: [...item.transform], width: item.width, height: item.height } }
       })
     yield finish(canvas, text)
   }

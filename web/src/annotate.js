@@ -3,7 +3,7 @@
 // page-image pixels) from the PDF's text layer or from OCR. Staff positions come from
 // the recogniser (the "staff-layout" field), note positions from the note ids.
 
-import { tempoMark } from './score.js'
+import { tempoDirection, quarterTempo, sourceInstrumentMetadata } from './metadata.js'
 
 // A root, a quality built from the usual pieces only (so words like "Der" don't match), a bass.
 const CHORD = /^([A-G])([#b♯♭]?)((?:maj|min|dim|aug|sus|add|omit|no|m|M|\d|[#b♯♭+°ø△()\-,])*)(?:\/([A-G])([#b♯♭]?))?$/
@@ -22,10 +22,12 @@ const ALTER = { '#': 1, '♯': 1, b: -1, '♭': -1 }
 const GLYPHS = {
   '\uF023': '#', '\uF062': 'b', '\uF071': 'q', '\uF068': 'h', '\uF065': 'e', '\uF06B': '.',
   '\uE1D5': 'q', '\uECA5': 'q', '\uE1D3': 'h', '\uECA3': 'h', '\uE1D7': 'e', '\uECA7': 'e', '\uE1E7': '.', '\uECB7': '.',
+  '♩': 'q', '𝅘𝅥': 'q', '𝅗𝅥': 'h', '♪': 'e', '𝅘𝅥𝅮': 'e',
 }
 const UNITS = { q: 'quarter', h: 'half', e: 'eighth' }
 // "q = 156" (the note glyph mapped above), "(q. = ca. 60)", and what OCR makes of the
-// note: "J=156", "d = 156" - there the unit is unknown and taken as a quarter.
+// note: "J=156", "d = 156". Their beat unit stays unknown until source pixels
+// establish a metronome glyph; ordinary equations must not become quarter BPM.
 const METRONOME = /(?:\b([qhe])(\.?))?\s*=\s*(?:c(?:irc)?a\.?\s*)?(\d{2,3})(?!\d)/
 const TEMPO_WORDS = ['grave', 'largo', 'larghetto', 'lento', 'adagio', 'andante', 'andantino', 'moderato',
   'allegretto', 'allegro', 'vivace', 'presto', 'prestissimo']
@@ -51,7 +53,8 @@ export function readTempos(line) {
     const word = line.filter(token => TEMPO_WORD.test(token.str) && token.x <= x
       && x-token.x-token.w < 3*token.h).at(-1)
     found.push({ tokens: [...new Set([...covered, ...(word ? [word] : [])])], x,
-      bpm: +match[3], unit: UNITS[match[1]] ?? 'quarter', dotted: !!match[2],
+      bpm: +match[3], unit: UNITS[match[1]] ?? null, dotted: !!match[2],
+      unitEvidence: match[1] ? 'explicit-note-or-unit' : 'unknown',
       words: word?.str.replace(/\(?\s*\S?\.?\s*=.*$/, '').trim() })
   }
   if (!found.length) {
@@ -66,8 +69,8 @@ export function tokens(items) {
   const clean = items
     .map((it) => ({
       ...it,
-      music: !/[^\uE000-\uF8FF\s]/.test(it.str),
-      str: it.str.replace(/[\uE000-\uF8FF]/g, (glyph) => GLYPHS[glyph] ?? ''),
+      music: !/[^\uE000-\uF8FF\s]/.test(it.str) || /^[♩𝅘𝅥𝅗𝅥♪𝅘𝅥𝅮]\.?$/u.test(it.str.trim()),
+      str: it.str.replace(/[\uE000-\uF8FF]|[♩𝅘𝅥𝅗𝅥♪𝅘𝅥𝅮]/gu, (glyph) => GLYPHS[glyph] ?? ''),
     }))
     .filter((it) => it.str.trim())
     .sort((a, b) => a.x - b.x)
@@ -75,7 +78,9 @@ export function tokens(items) {
   for (const it of clean) {
     const gap = (t) => it.x - (t.x + t.w)
     const prev = out.findLast((t) => Math.abs(t.y - it.y) < 0.4 * Math.max(t.h, it.h) && gap(t) < 0.2 * t.h && gap(t) > -0.6 * t.h)
-    if (prev) Object.assign(prev, { str: prev.str + it.str, w: it.x + it.w - prev.x, music: prev.music && it.music })
+    if (prev) Object.assign(prev, { str: prev.str + ((it.tempoEvidence || it.music && /^[qhe]\.?$/.test(it.str)) && prev.str.length>1 ? ' ' : '') + it.str,
+      w: it.x + it.w - prev.x, music: prev.music && it.music,
+      ...(it.tempoEvidence ? { tempoEvidence:it.tempoEvidence, source:it.source } : {}) })
     else out.push({ ...it })
   }
   return out
@@ -117,13 +122,18 @@ const place = (id) => {
  * Annotate the MusicXML document in place. Returns what it added: {title, lyrics, chords}.
  * `text[p]` is the token list of page p.
  */
-export function annotate(doc, text) {
+export function annotate(doc, text, options = {}) {
   const field = doc.querySelector('miscellaneous-field[name="staff-layout"]')
-  const layout = JSON.parse(field?.textContent ?? '[]')
+  const layout = options.layout ?? JSON.parse(field?.textContent ?? '[]')
   const container = field?.parentNode
   field?.remove()
   if (container && !container.children.length) container.remove()
   const added = { title: '', lyrics: 0, chords: 0, tempo: 0 }
+  const audit = [...(options.sourceAudit ?? [])]
+  const instrument = sourceInstrumentMetadata(doc, text, layout)
+  added.instrument = instrument
+  audit.push({ kind: 'instrument', ...instrument })
+  const firstMusicPage = layout.findIndex(staffs => staffs?.length)
 
   // Every note and rest with a known place, filed under the staff it lies closest to.
   const byStaff = new Map() // "page/staff index" -> [{el, x}]
@@ -203,21 +213,43 @@ export function annotate(doc, text) {
       const nearerBelow = below && (!above || below[0] < above[0])
 
       // A tempo stands above its staff, perhaps beside other text on the same line.
-      const tempos = nearerBelow && below[0] < 12 * unit(below[1]) ? readTempos(line) : []
-      const anchors = byStaff.get(`${page}/${below?.[1]}`) ?? []
-      if (tempos.length && anchors.length) {
+      // Metronome glyph font boxes can be much taller than their visible ink.
+      // Use the mark's own baseline and the staff below it, rather than the
+      // lyric/chord center heuristic which can assign it to the previous staff.
+      const tempos = readTempos(line)
+      if (tempos.length) {
         const used = new Set()
         for (const tempo of tempos) {
+          if (tempo.bpm && !tempo.unit) { audit.push({kind:'tempo',page,status:'unknown',reason:'unit-unknown',bpm:tempo.bpm}); continue }
+          const ys = tempo.tokens.map(t => t.y).sort((a,b)=>a-b), baseline=ys[ys.length>>1]
+          const eligible = staffs.map((s,i)=>[s[1]-baseline,i]).filter(([gap,i])=>gap>=-.1*unit(i)&&gap<12*unit(i)).sort((a,b)=>a[0]-b[0])
+          const target = tempo.bpm ? eligible[0] : nearerBelow && below?.[0]<12*unit(below[1]) ? below : null
+          if (!target) { audit.push({kind:'tempo',page,status:'unknown',reason:'no-staff-below',bpm:tempo.bpm}); continue }
+          const tempoAnchors = byStaff.get(`${page}/${target[1]}`) ?? []
           // Tempo text often starts before its onset (before a changed meter).
           // Chord placement's "last onset to the left" would attach it to the old bar.
-          const anchor = anchors.reduce((best, current) => Math.abs(current.x-tempo.x) < Math.abs(best.x-tempo.x) ? current : best)
-          anchor.el.parentNode.insertBefore(tempoMark(doc, tempo), anchor.el)
+          const anchor = tempoAnchors.length ? tempoAnchors.reduce((best, current) => Math.abs(current.x-tempo.x) < Math.abs(best.x-tempo.x) ? current : best) : null
+          let measure=anchor?.el.parentNode, before=anchor?.el, binding='source-coordinate'
+          const openingEvidence=tempo.tokens.some(t=>t.tempoEvidence?.staff===0)
+            && tempo.x<=staffs[0][0]+16*unit(0)
+          if(!measure && openingEvidence && page===firstMusicPage && target[1]===0 && doc.querySelectorAll('score-partwise > part').length===1) {
+            measure=doc.querySelector('score-partwise > part > measure');before=measure?.querySelector(':scope > note');binding='opening-source-first-staff'
+          }
+          if(!measure) {audit.push({kind:'tempo',page,staff:target[1],status:'unknown',reason:'no-source-anchor',bpm:tempo.bpm});continue}
+          const duplicate=[...measure.querySelectorAll(':scope > direction > direction-type > metronome')].some(m=>
+            +(m.querySelector('per-minute')?.textContent)===tempo.bpm&&m.querySelector('beat-unit')?.textContent===tempo.unit&&!!m.querySelector('beat-unit-dot')===tempo.dotted)
+          if(duplicate){tempo.tokens.forEach(token=>used.add(token));continue}
+          measure.insertBefore(tempoDirection(doc, tempo), before ?? null)
           added.tempo++
+          audit.push({kind:'tempo',page,staff:target[1],measure:measure.getAttribute('number'),part:measure.parentNode.getAttribute('id'),status:'applied',binding,
+            bpm:tempo.bpm,unit:tempo.unit,dotted:tempo.dotted,quarterBpm:quarterTempo(tempo),source:tempo.tokens.map(t=>({str:t.str,x:t.x,y:t.y,w:t.w,h:t.h,source:t.source}))})
           tempo.tokens.forEach(token => used.add(token))
         }
         line.splice(0, line.length, ...line.filter(token => !used.has(token)))
         if (!line.length) continue
       }
+
+      const anchors = byStaff.get(`${page}/${below?.[1]}`) ?? []
 
       const chords = line.map((t) => CHORD.exec(t.str))
       // Chord symbols sit close above their staff, lyrics close below theirs: the nearer
@@ -274,5 +306,12 @@ export function annotate(doc, text) {
       }
     }
   })
+  let identification=doc.querySelector('score-partwise > identification')
+  if(!identification){identification=element(doc,'identification');doc.documentElement.insertBefore(identification,doc.querySelector('score-partwise > defaults, score-partwise > credit, score-partwise > part-list, score-partwise > part'))}
+  let miscellaneous=identification.querySelector(':scope > miscellaneous')
+  if(!miscellaneous)miscellaneous=identification.appendChild(element(doc,'miscellaneous'))
+  miscellaneous.querySelector('miscellaneous-field[name="metadata-audit"]')?.remove()
+  miscellaneous.append(element(doc,'miscellaneous-field',JSON.stringify(audit),{name:'metadata-audit'}))
+  added.metadataAudit=audit
   return added
 }
