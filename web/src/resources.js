@@ -1,6 +1,6 @@
 // Verified static assets only. The host serves these files from its own origin;
 // no browser-side CDN fallback, inference API or user content leaves the device.
-import assets from './runtime-assets.json'
+import assets from './runtime-assets.json' with { type: 'json' }
 
 const models = {
   'segnet.onnx': '6ed36640db4ef5d223098b6d5efe4eda97c66b24a2c72faab8a018c749003a8d',
@@ -20,7 +20,7 @@ export function resourceError(url, message, code = 'RESOURCE_DOWNLOAD_FAILED', a
   return error
 }
 
-export function createResourceClient(packageBase, { signal, onProgress = () => {} } = {}) {
+export function createResourceClient(packageBase, { signal, onProgress = () => {}, idleTimeoutMs = 45000, totalTimeoutMs = 1800000 } = {}) {
   const base = packageBase, activeSignal = signal, progress = event => { if (!signal?.aborted) onProgress(event) }
   let hooked = false
   const inFlight = new Map()
@@ -48,12 +48,15 @@ async function assetBytes(url, { signal = activeSignal, onBytes = () => {} } = {
     let cached
     try { cached = await cache.match(url) } catch { /* Fetch remains available when cache reads fail. */ }
     if (cached) {
-      const bytes = await cached.arrayBuffer()
-      if ((!expected.bytes || bytes.byteLength === expected.bytes) && await hash(bytes) === expected.sha256) {
-        onBytes(bytes.byteLength, bytes.byteLength)
-        progress({ phase: 'downloading', resourceURL: url, resource: new URL(url).pathname, done: bytes.byteLength, total: bytes.byteLength, cached: true, text: 'Using downloaded resource.' })
-        return bytes
-      }
+      try {
+        const bytes = await cached.arrayBuffer()
+        if ((!expected.bytes || bytes.byteLength === expected.bytes) && await hash(bytes) === expected.sha256) {
+          aborted(signal)
+          onBytes(bytes.byteLength, bytes.byteLength)
+          progress({ phase: 'downloading', resourceURL: url, resource: new URL(url).pathname, done: bytes.byteLength, total: bytes.byteLength, cached: true, text: 'Using downloaded resource.' })
+          return bytes
+        }
+      } catch { aborted(signal) }
       await cache.delete(url).catch(() => {})
       progress({ phase: 'downloading', resourceURL: url, warning: 'CACHE_CHECKSUM_MISMATCH', text: 'A cached resource is incomplete or damaged; downloading it again.' })
     }
@@ -63,7 +66,10 @@ async function assetBytes(url, { signal = activeSignal, onBytes = () => {} } = {
     aborted(signal)
     const controller = new AbortController(), relay = () => controller.abort(signal.reason)
     signal?.addEventListener('abort', relay, { once: true })
-    const timeout = setTimeout(() => controller.abort(new Error('Resource download timed out')), 90000)
+    let idleTimer
+    const resetIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => controller.abort(resourceError(url, 'Download stopped making progress', 'RESOURCE_IDLE_TIMEOUT', attempt)), idleTimeoutMs) }
+    resetIdle()
+    const totalTimer = setTimeout(() => controller.abort(resourceError(url, 'Download exceeded its maximum duration', 'RESOURCE_TOTAL_TIMEOUT', attempt)), totalTimeoutMs)
     try {
       const response = await nativeFetch(url, { signal: controller.signal, cache: 'no-cache' })
       if (!response.ok) throw resourceError(url, `HTTP ${response.status}`, 'RESOURCE_HTTP_ERROR', attempt)
@@ -73,6 +79,7 @@ async function assetBytes(url, { signal = activeSignal, onBytes = () => {} } = {
       for (;;) {
         const { value, done: end } = await reader.read()
         if (end) break
+        resetIdle()
         chunks.push(value)
         done += value.length
         onBytes(done, total)
@@ -89,10 +96,12 @@ async function assetBytes(url, { signal = activeSignal, onBytes = () => {} } = {
       return bytes
     } catch (error) {
       aborted(signal)
+      if (controller.signal.reason?.resourceURL) error = controller.signal.reason
       failure = error?.resourceURL ? error : resourceError(url, error?.message || 'Network request failed', 'RESOURCE_DOWNLOAD_FAILED', attempt)
       if (attempt < 3) progress({ phase: 'downloading', resourceURL: url, resource: new URL(url).pathname, attempt, maxAttempts: 3, retrying: true, text: `Download interrupted. Retrying ${new URL(url).pathname.split('/').at(-1)} (${attempt + 1}/3)…` })
     } finally {
-      clearTimeout(timeout)
+      clearTimeout(idleTimer)
+      clearTimeout(totalTimer)
       signal?.removeEventListener('abort', relay)
     }
   }

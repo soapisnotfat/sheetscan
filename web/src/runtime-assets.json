@@ -128,5 +128,15 @@
     "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "bytes": 11358,
     "group": "notice"
+  },
+  "python/LICENSE": {
+    "sha256": "b0e25a78cffb43f4d92de8b61ccfa1f1f98ecbc22330b54b5251e7b6ba010231",
+    "bytes": 13804,
+    "group": "notice"
+  },
+  "ort/ThirdPartyNotices.txt": {
+    "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
+    "bytes": 338088,
+    "group": "notice"
   }
 }

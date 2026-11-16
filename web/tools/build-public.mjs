@@ -35,6 +35,7 @@ try {
     await writeFile(destination, bytes)
   }
   await copyFile(join(root, 'runtime-lock.json'), join(staged, 'runtime-lock.json'))
+  await copyFile(join(root, 'runtime-notices.txt'), join(staged, 'runtime-notices.txt'))
   for (const name of notices) {
     const destination = join(staged, name === 'LICENSE' ? name : `licenses/${name.slice(6)}`)
     await mkdir(dirname(destination), { recursive: true })
@@ -67,7 +68,7 @@ try {
   await writeFile(join(out, 'public-build.json'), JSON.stringify({
     kind: sdk ? 'browser-sdk' : 'browser-app', sdkVersion: 'v14-static-runtime', recognizerVersion: 'v13-woodwind-pdf',
     sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
-    stagedPublicAllowlist: [...tracked, ...runtime, 'runtime-lock.json', ...runtimeLock.assets.map(asset => 'runtime/' + asset.path)], trackedNotices: notices, files,
+    stagedPublicAllowlist: [...tracked, ...runtime, 'runtime-lock.json', 'runtime-notices.txt', ...runtimeLock.assets.map(asset => 'runtime/' + asset.path)], trackedNotices: notices, files,
   }, null, 2)+'\n')
   console.log(`Safe ${sdk ? 'SDK' : 'app'} build: ${Object.keys(files).length} files; no local regression PDFs copied`)
 } finally {

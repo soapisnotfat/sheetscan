@@ -3,28 +3,63 @@ import { createResourceClient } from './resources.js'
 // symbols. Its pinned code and language data are same-origin static resources.
 
 
-export function createOCR({ importResource, prepareResources, runtimeURL }) {
+export function createOCR(resources) {
+const { prepareResources, runtimeURL } = resources
 let worker
 
-async function start() {
-  await prepareResources('ocr')
-  const tesseract = await importResource('tesseract/tesseract.esm.min.js')
-  const made = await (tesseract.default ?? tesseract).createWorker(['eng', 'deu'], 1, {
-    workerPath: runtimeURL('tesseract/worker.min.js'), workerBlobURL: false,
-    corePath: runtimeURL('tesseract/core/'), langPath: runtimeURL('tesseract/lang/'),
-    errorHandler: () => {},
-  })
-  // "Sparse text": words scattered over the page. The default layout analysis looks for
-  // columns of prose and loses most of the text between staves.
-  await made.setParameters({ tessedit_pageseg_mode: '11' })
-  return made
-}
-
+let nativeWorker, closed = false, sequence = 0
+const pending = new Map()
+const aborted = () => new DOMException('Text recognition cancelled', 'AbortError')
 function close() {
-  const previous = worker
+  closed = true
+  nativeWorker?.terminate()
+  nativeWorker = undefined
   worker = undefined
   last = Promise.resolve()
-  previous?.then(made => made.terminate()).catch(() => {})
+  for (const request of pending.values()) request.reject(aborted())
+  pending.clear()
+}
+function send(action, payload) {
+  if (closed) return Promise.reject(aborted())
+  const jobId = String(++sequence)
+  return new Promise((resolve, reject) => {
+    pending.set(jobId, { resolve, reject })
+    nativeWorker.postMessage({ workerId: 'owned-ocr', jobId, action, payload })
+  })
+}
+async function imageBytes(image) {
+  if (image instanceof Uint8Array) return image
+  const blob = await new Promise(resolve => image.toBlob(resolve, 'image/png'))
+  return new Uint8Array(await blob.arrayBuffer())
+}
+async function start() {
+  await prepareResources('ocr')
+  if (closed) throw aborted()
+  // Use the pinned worker's existing protocol directly so startup itself is
+  // cancellable. No library-global Worker, job queue or rejected promise survives.
+  nativeWorker = new Worker(runtimeURL('tesseract/worker.min.js'))
+  nativeWorker.onmessage = ({ data }) => {
+    const request = pending.get(data.jobId)
+    if (!request || data.status === 'progress') return
+    pending.delete(data.jobId)
+    if (data.status === 'resolve') request.resolve({ data: data.data })
+    else request.reject(Object.assign(new Error(String(data.data)), { code: 'OCR_WORKER_FAILED', resourceURL: runtimeURL('tesseract/worker.min.js') }))
+  }
+  nativeWorker.onerror = event => {
+    const error = Object.assign(new Error(event.message || 'Text recognition worker failed'), { code: 'OCR_WORKER_FAILED', resourceURL: event.filename || runtimeURL('tesseract/worker.min.js') })
+    for (const request of pending.values()) request.reject(error)
+    pending.clear()
+  }
+  await send('load', { options: { lstmOnly: true, corePath: runtimeURL('tesseract/core/'), logging: false } })
+  const languages = await Promise.all(['eng', 'deu'].map(async code => ({ code, data: new Uint8Array(await resources.assetBytes(runtimeURL('tesseract/lang/' + code + '.traineddata.gz'))) })))
+  await send('loadLanguage', { langs: languages, options: { cacheMethod: 'none', gzip: true, lstmOnly: true } })
+  await send('initialize', { langs: ['eng', 'deu'], oem: 1, config: {} })
+  const made = {
+    setParameters: params => send('setParameters', { params }),
+    recognize: async (image, options = {}, output = { text: true }) => send('recognize', { image: await imageBytes(image), options, output }),
+  }
+  await made.setParameters({ tessedit_pageseg_mode: '11' })
+  return made
 }
 
 function getWorker() {
@@ -141,7 +176,7 @@ async function readDigits(page, [left, top, right, bottom]) {
 }
 
 async function read(page) {
-  const { data } = await (await getWorker()).recognize(page.url, {}, { blocks: true })
+  const { data } = await (await getWorker()).recognize(new Uint8Array(page.png), {}, { blocks: true })
   return (data.blocks ?? [])
     .flatMap((block) => block.paragraphs)
     .flatMap((paragraph) => paragraph.lines)

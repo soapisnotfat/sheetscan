@@ -33,74 +33,79 @@
       "path": "pyodide/pyodide.mjs",
       "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.mjs",
       "group": "python",
-      "license": "MPL-2.0",
       "source": "https://github.com/pyodide/pyodide/tree/314.0.7",
       "sha256": "6f1d60f7bf529beb300f0f47983c921d3982363640ba20af0e38efdddbc66109",
-      "bytes": 17931
+      "bytes": 17931,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
     },
     {
       "path": "pyodide/pyodide.asm.mjs",
       "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.asm.mjs",
       "group": "python",
-      "license": "MPL-2.0",
       "source": "https://github.com/pyodide/pyodide/tree/314.0.7",
       "sha256": "f7cdc8ece80678ceb712f8e65ebe6d3a83203a180c399865f49612a051693635",
-      "bytes": 1250344
+      "bytes": 1250344,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
     },
     {
       "path": "pyodide/pyodide.asm.wasm",
       "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.asm.wasm",
       "group": "python",
-      "license": "MPL-2.0",
       "source": "https://github.com/pyodide/pyodide/tree/314.0.7",
       "sha256": "cc36e3cab04fdfc9a63ff13eb52eae2b911bf46c025cc7b281f394bd3de1d5e6",
-      "bytes": 9598218
+      "bytes": 9598218,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
     },
     {
       "path": "pyodide/python_stdlib.zip",
       "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/python_stdlib.zip",
       "group": "python",
-      "license": "MPL-2.0",
-      "source": "https://github.com/pyodide/pyodide/tree/314.0.7",
+      "source": "https://github.com/python/cpython/tree/v3.14.2",
       "sha256": "fa1957e5777068fc4f7437f96d860ae2fbe9c19732ba06c84e004ec16dd7dd7a",
-      "bytes": 2545637
+      "bytes": 2545637,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms.",
+      "license": "Python-2.0"
     },
     {
       "path": "pyodide/pyodide-lock.json",
       "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide-lock.json",
       "group": "python",
-      "license": "MPL-2.0",
       "source": "https://github.com/pyodide/pyodide/tree/314.0.7",
       "sha256": "5dc2fc119108bc148c7457dc86e7675b5c87e1cafd420b9c34c1eaef7b36c010",
-      "bytes": 119077
+      "bytes": 119077,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
     },
     {
       "path": "pyodide/numpy-2.4.6-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
       "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/numpy-2.4.6-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
       "group": "python",
       "sha256": "a292c1f5d7d8a2208cd5e94fc467604c131cabcd2fc14fed6eefde121e7fabdf",
-      "bytes": 2960568
+      "bytes": 2960568,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
     },
     {
       "path": "pyodide/opencv_python-4.11.0.86-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
       "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/opencv_python-4.11.0.86-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
       "group": "python",
       "sha256": "469a8ba6758ec4e0bce12436da977a1db3a953e320927c3f55ca6233a5d20acf",
-      "bytes": 10675764
+      "bytes": 10675764,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
     },
     {
       "path": "pyodide/pillow-12.2.0-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
       "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pillow-12.2.0-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
       "group": "python",
       "sha256": "e29838b7a756e4ee0f27a9cfa9a387ee0dfa2e9dd44be2dd595130b9f9d93ac3",
-      "bytes": 1037806
+      "bytes": 1037806,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
     },
     {
       "path": "pyodide/typing_extensions-4.15.0-py3-none-any.whl",
       "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/typing_extensions-4.15.0-py3-none-any.whl",
       "group": "python",
       "sha256": "4fec68770a05408e668a4fa53d6bf4f0f684b9dacf820c7c5d6e97d3ad225e29",
-      "bytes": 44613
+      "bytes": 44613,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
     },
     {
       "path": "tesseract/tesseract.esm.min.js",
@@ -222,6 +227,22 @@
       "license": "Apache-2.0",
       "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
       "bytes": 11358
+    },
+    {
+      "path": "python/LICENSE",
+      "url": "https://raw.githubusercontent.com/python/cpython/v3.14.2/LICENSE",
+      "group": "notice",
+      "license": "Python-2.0",
+      "sha256": "b0e25a78cffb43f4d92de8b61ccfa1f1f98ecbc22330b54b5251e7b6ba010231",
+      "bytes": 13804
+    },
+    {
+      "path": "ort/ThirdPartyNotices.txt",
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.1/ThirdPartyNotices.txt",
+      "group": "notice",
+      "license": "See component notices",
+      "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
+      "bytes": 338088
     }
   ]
 }

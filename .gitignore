@@ -9,3 +9,6 @@ web/public/models/
 web/public/homr.zip
 web/dist-public/
 web/dist-sdk/
+
+# Verified downloadable static browser runtime (never commit binary caches)
+web/.cache/

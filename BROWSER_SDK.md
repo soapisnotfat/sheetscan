@@ -43,3 +43,14 @@ PLAYWRIGHT_CHANNEL=chrome node tools/sdk-smoke.mjs http://127.0.0.1:5196/ INPUT.
 ```
 
 Score playback must consume MusicXML meter, tempo, voices, repeats and written pitch. Audio synchronization remains the host application's responsibility; this converter does not infer audio timestamps.
+
+
+## Static runtime and preview
+
+The `v14-static-runtime` SDK retains the accepted `v13-woodwind-pdf` recognizer, ONNX bytes and postprocessing. Its required ORT 1.31.1, Pyodide 314.0.7, Python wheels and Tesseract 7.0.0/English/German assets are served from the SDK's own `runtime/` directory. No browser-side external CDN is required. `web/runtime-lock.json` records each exact public download URL, size and SHA-256. The full original runtime and wheel license texts are retained in `web/runtime-notices.txt`; their separate licenses also remain inside the shipped wheel archives. Binary runtime files stay out of Git. Pass a content-addressed verified cache using `--runtime-cache=/path/to/cache` when building the SDK.
+
+`renderPreview(files, {signal, onProgress, onPage, maxWidth: 1400})` streams each rendered page through `onPage` and resolves `{pages}`. Each page contains `{png, width, height, fileIndex, page, pageCount}`; file indices start at zero and page numbers at one. This only uses PDF.js and never starts recognition, OCR or model downloads. The host can render those PNG bytes on its own canvas. Its packaging must externalize the embedded PDF.js worker to a same-origin file when its CSP excludes executable data URLs.
+
+`createScoreConverter({modelBase, onProgress}).convert(files, {signal})` accepts an optional absolute `modelBase` whose `models/{segnet,encoder,decoder}.onnx` URLs contain the same pinned weights. A host can retain a stable model-set URL when updating SDK code, so cached weights are reused. Each conversion owns its OCR worker and downloads; cancelling an earlier conversion cannot terminate a later one.
+
+Download progress is per resource: `{phase: 'downloading', resourceURL, resource, done, total, attempt, maxAttempts}`. `total` describes that file, not total conversion completion. `retrying` and cache `warning` fields describe recovery. Resource errors retain `code`, `resourceURL` and `attempts`. Downloads retry at most three times, reset a 45-second idle timer after each received chunk and retain a separate 30-minute cap; manual cancellation remains available. Successful bytes are SHA-256 verified before being cached. Unavailable or full browser caches do not discard otherwise usable downloads.
