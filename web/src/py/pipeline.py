@@ -14,9 +14,10 @@ from fractions import Fraction
 
 import cv2
 import numpy as np
-from score_numbers import read_meters, rest_number_box, read_forward_repeats
+from score_numbers import read_meters, rest_number_box, read_forward_repeats, read_multirest_regions
 from printed_tuplets import read_tuplet_marks, tuplet_candidates, apply_tuplet
 from accidental_glyphs import read_accidentals
+from staff_coverage import choose_staff_region
 
 # homr imports these at module level but only uses them for downloads, PDF
 # rendering and title OCR, none of which this pipeline calls.
@@ -50,6 +51,38 @@ _page_sources = []
 _rest_records = []
 _number_reader = None
 _coordinate_audit = []
+_raw_heads = []
+_coverage_context = None
+_coverage_audit = []
+
+
+_predict_symbols_coverage_base = homr_main.predict_symbols
+def _predict_symbols_with_raw_heads(debug, predictions):
+    global _raw_heads
+    result = _predict_symbols_coverage_base(debug, predictions)
+    _raw_heads = [{'center': [float(v) for v in head.center],
+                   'size': [float(v) for v in head.size]} for head in result.noteheads]
+    return result
+
+
+_calculate_region_coverage_base = staff_parsing._calculate_region
+def _calculate_region_with_coverage(staff, regions):
+    box = _calculate_region_coverage_base(staff, regions)
+    if _coverage_context is None:
+        return box
+    image, staffs = _coverage_context
+    grid = [{'x': float(point.x), 'y': [float(v) for v in point.y]} for point in staff.grid]
+    neighbours = [{'top': min(float(point.y[0]) for point in other.grid),
+                   'bottom': max(float(point.y[-1]) for point in other.grid)}
+                  for other in staffs if other is not staff]
+    decision = choose_staff_region(image, box, grid, _raw_heads, neighbours=neighbours)
+    if decision['changed']:
+        _coverage_audit.append({'originalBox': [int(v) for v in box], **decision})
+    return np.asarray(decision['box'], dtype=box.dtype)
+
+
+homr_main.predict_symbols = _predict_symbols_with_raw_heads
+staff_parsing._calculate_region = _calculate_region_with_coverage
 
 
 def _reassociate_note_coordinates(result, staff, transform=lambda point: point):
@@ -345,8 +378,14 @@ def repair_rest_count(score, note_id, count):
             if len(padding) != previous-1 or not all(_padding_rest(m) for m in padding):
                 raise ValueError('Multirest span contains non-rest content; correction needs review')
             if count > previous:
+                template = padding[-1] if padding else ET.Element('measure')
+                if not padding:
+                    for original in measure.findall('note'):
+                        note = copy.deepcopy(original)
+                        note.attrib.pop('id', None)
+                        template.append(note)
                 for _ in range(count-previous):
-                    part.insert(list(part).index(measure)+previous, copy.deepcopy(padding[-1]))
+                    part.insert(list(part).index(measure)+previous, copy.deepcopy(template))
             elif count < previous:
                 for item in padding[count-1:]:
                     part.remove(item)
@@ -358,6 +397,72 @@ def repair_rest_count(score, note_id, count):
     raise ValueError('Multirest source was not found')
 
 
+def _promote_symbolic_rest(score, source):
+    """Enable count expansion only for a source-verified symbolic whole rest.
+
+    Shape establishes eligibility, never the count. The caller must already
+    have obtained a count from the printed number reader.
+    """
+    if not source.get('symbolicStyle') or not source.get('sourceRegion'):
+        raise ValueError('Symbolic multirest pixel evidence is missing')
+    for measure in score.findall('part/measure'):
+        notes = measure.findall('note')
+        if len(notes) != 1 or notes[0].get('id') != source['sourceId']:
+            continue
+        note = notes[0]
+        if (note.find('rest') is None or note.findtext('type') != 'whole'
+                or any(child.tag not in ('attributes', 'print', 'note', 'barline') for child in measure)
+                or measure.find('attributes/measure-style') is not None):
+            raise ValueError('Symbolic multirest is not an isolated whole rest')
+        attributes = measure.find('attributes')
+        if attributes is None:
+            attributes = ET.Element('attributes')
+            measure.insert(0, attributes)
+        ET.SubElement(ET.SubElement(attributes, 'measure-style'), 'multiple-rest').text = '1'
+        note.find('rest').set('measure', 'yes')
+        note.remove(note.find('type'))
+        return
+    raise ValueError('Symbolic multirest source was not found')
+
+
+def _bind_symbolic_rest_sources(score, boxes, regions, existing, page):
+    """Bind unique source geometry to a whole-rest decoder record, without GT.
+
+    Decoder attention can point at the number above the staff. Horizontal
+    alignment and nearest physical staff must therefore agree independently.
+    """
+    used = {source['sourceId'] for source in existing}
+    proposed = []
+    for region in regions:
+        si = region['staff']
+        box = boxes[si]
+        unit = (box[3]-box[1])/4
+        left, top, right, bottom = region['shapeBox']
+        candidates = []
+        for measure in score.findall('part/measure'):
+            notes = measure.findall('note')
+            if (len(notes) != 1 or notes[0].find('rest') is None
+                    or notes[0].findtext('type') != 'whole'
+                    or measure.find('attributes/measure-style') is not None):
+                continue
+            note = notes[0]
+            at = re.search(r'-p(\d+)-(\d+)-(\d+)$', note.get('id', ''))
+            if at is None or note.get('id') in used:
+                continue
+            _, x, y = map(int, at.groups())
+            nearest = min(range(len(boxes)), key=lambda i: max(boxes[i][1]-y, y-boxes[i][3], 0))
+            if (nearest == si and left-unit <= x <= right+unit
+                    and box[1]-3*unit <= y <= box[3]+unit):
+                candidates.append(note.get('id'))
+        if len(candidates) == 1:
+            proposed.append({'sourceId': candidates[0], 'page': page, 'count': 1,
+                             'numberBox': region['numberBox'], 'symbolicStyle': region['style'],
+                             'sourceRegion': region['shapeBox'], 'staff': si})
+    # One decoder rest cannot be expanded twice when source regions overlap.
+    return [source for source in proposed
+            if sum(item['sourceId'] == source['sourceId'] for item in proposed) == 1]
+
+
 def repair_rest_counts_xml(text, changes_json):
     score = ET.fromstring(text)
     audit_field = score.find('.//miscellaneous-field[@name="conversion-audit"]')
@@ -365,10 +470,14 @@ def repair_rest_counts_xml(text, changes_json):
     sources_field = score.find('.//miscellaneous-field[@name="numeric-sources"]')
     sources = json.loads(sources_field.text) if sources_field is not None else []
     for change in json.loads(changes_json):
+        source = next((s for s in sources if s['sourceId'] == change['sourceId']), None)
+        if source and source.get('count') == 1 and source.get('symbolicStyle'):
+            _promote_symbolic_rest(score, source)
         fixed = repair_rest_count(score, change['sourceId'], int(change['count']))
         delta = fixed['count']-fixed['previous']
         for entry in (audit.get('printedMeters', []) + audit.get('changes', []) + audit.get('conflicts', [])
-                      + audit.get('repeatLocationChanges', []) + audit.get('tupletCandidates', []) + audit.get('tupletsApplied', [])):
+                      + audit.get('repeatLocationChanges', []) + audit.get('printedRepeatChanges', [])
+                      + audit.get('naturalChanges', []) + audit.get('tupletCandidates', []) + audit.get('tupletsApplied', [])):
             if entry.get('part') == fixed['part'] and entry.get('measure', 0) >= fixed['startMeasure']+fixed['previous']:
                 entry['measure'] += delta
                 if 'number' in entry:
@@ -612,10 +721,12 @@ def _staff_boxes(rows, to_input):
 
 def _read_page(path):
     """One page image -> (MusicXML <score-partwise> element, staff boxes)."""
-    global _line_above, _rest_records, _coordinate_audit
+    global _line_above, _rest_records, _coordinate_audit, _raw_heads, _coverage_context, _coverage_audit
     _line_above = None
     _rest_records = []
     _coordinate_audit = []
+    _raw_heads = []
+    _coverage_audit = []
     try:
         rows, image, debug, _, _, to_input = detect_staffs_in_image(path, _CONFIG)
     except Exception as error:
@@ -626,8 +737,10 @@ def _read_page(path):
         rows = _split_unjoined_systems(image, repair_systems(debug, rows))
         if not _has_printed_staff(image, rows):
             raise NonMusicPage("No supported five-line music staff found")
+        _coverage_context = (image, [staff for row in rows for staff in row.staffs])
         voices = staff_parsing.parse_staffs(debug, rows, image, config=_TRANSFORMER)
     finally:
+        _coverage_context = None
         debug.clean_debug_files_from_previous_runs()
     for symbol in (s for voice in voices for s in voice):
         if symbol.image_coordinates:  # so far in the resized page homr works on
@@ -687,12 +800,24 @@ def _read_page(path):
             if reading and reading['value'] != record['count']:
                 rest_changes.append(repair_rest_count(xml, note.get('id'), reading['value']))
                 source['count'] = reading['value']
+    symbolic = _bind_symbolic_rest_sources(xml, boxes, read_multirest_regions(original, boxes), rests, _page)
+    rests.extend(symbolic)
+    for source in symbolic:
+        if _number_reader and source['numberBox']:
+            a,b,c,d = source['numberBox']
+            reading = _number_reader(original[b:d,a:c])
+            source['reading'] = reading
+            if reading and 2 <= reading['value'] <= 256:
+                _promote_symbolic_rest(xml, source)
+                rest_changes.append(repair_rest_count(xml, source['sourceId'], reading['value']))
+                source['count'] = reading['value']
     _page_sources.append({'page': _page, 'score': xml, 'layout': boxes, 'meters': meters,
                           'tuplets': read_tuplet_marks(original, boxes),
                           'forwardRepeats': read_forward_repeats(original, boxes),
                           'accidentals': accidentals,
                           'layoutChanges': layout_changes,
                           'coordinateChanges': _coordinate_audit,
+                          'staffCoverageChanges': _coverage_audit,
                           'rests': rests, 'restChanges': rest_changes,
                           'inferredFirst': [_first_time_is_inferred(voice) for voice in voices]})
     return xml, boxes
@@ -899,6 +1024,7 @@ def scan(paths, progress=lambda done, total: None, number_reader=None, printed_t
     numeric_audit = _repair_meters(merged, _page_sources)
     numeric_audit['layoutChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('layoutChanges', [])]
     numeric_audit['coordinateChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('coordinateChanges', [])]
+    numeric_audit['staffCoverageChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('staffCoverageChanges', [])]
     numeric_audit['repeatLocationChanges'] = _repair_forward_repeat_locations(merged)
     numeric_audit['printedRepeatChanges'] = _repair_printed_forward_repeats(merged, _page_sources)
     numeric_audit['naturalChanges'] = _repair_natural_cancellations(merged, _page_sources)

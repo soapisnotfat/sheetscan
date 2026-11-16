@@ -41,7 +41,7 @@ def run(output, images, printed_tuplets=False, read_numbers=False):
               'sourceSha256': {name: hashlib.sha256((SOURCE_DIR/name).read_bytes()).hexdigest()
                                for name in ('pipeline.py', 'score_numbers.py', 'printed_tuplets.py',
                                             'tuplet_glyphs.py', 'tuplet_classifier.json', 'tuplet_templates.json',
-                                            'accidental_glyphs.py', 'accidental_classifier.json')
+                                            'accidental_glyphs.py', 'accidental_classifier.json', 'staff_coverage.py')
                                if (SOURCE_DIR/name).exists()},
               'inputs': [{'file': p.name, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in images],
               'outputSha256': hashlib.sha256(output.read_bytes()).hexdigest(),
