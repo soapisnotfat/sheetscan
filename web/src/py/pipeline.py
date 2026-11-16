@@ -1020,10 +1020,20 @@ def _give_every_staff_a_clef(score):
     """A staff that is silent at first (a piece opening on single-staff lines before the
     piano enters) gets its first clef only where it starts: put that clef at the beginning."""
     for part in score.findall("part"):
-        first = part.find("measure/attributes")
+        opening = part.find("measure")
+        first = opening.find("attributes") if opening is not None else None
         if first is None:
             continue
-        have = {clef.get("number", "1") for clef in first.findall("clef")}
+        # A decoder can split opening attributes into multiple elements without
+        # advancing musical time. A clef already declared before the first note
+        # does not need another copy in the first attributes element. Leave all
+        # source clefs in place, including later courtesy clefs and changes.
+        have = set()
+        for item in opening:
+            if item.tag in ("note", "backup", "forward"):
+                break
+            if item.tag == "attributes":
+                have.update(clef.get("number", "1") for clef in item.findall("clef"))
         for clef in part.iter("clef"):
             number = clef.get("number", "1")
             if number not in have:

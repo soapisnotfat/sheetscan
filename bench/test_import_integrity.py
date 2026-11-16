@@ -23,6 +23,51 @@ def score(parts=1, notes=1):
 
 
 class IntegrityTests(unittest.TestCase):
+    def test_split_opening_attributes_do_not_duplicate_the_clef(self):
+        fixture = Path(__file__).parent / 'fixtures/opening-clef-split-attributes.musicxml'
+        root = ET.parse(fixture).getroot()
+        before = ET.tostring(root)
+        pipeline._give_every_staff_a_clef(root)
+        self.assertEqual(ET.tostring(root), before)
+        self.assertEqual(len(root.find('part/measure').findall('attributes/clef')), 1)
+        self.assertEqual(len(root.findall('.//clef')), 3)
+        self.assertEqual([node.get('tempo') for node in root.findall('.//sound')], ['96', '120'])
+        self.assertIsNotNone(root.find('part/measure[@number="1"]/print'))
+
+    def test_numbered_opening_clef_in_later_attributes_is_already_present(self):
+        root = ET.fromstring('<score-partwise><part><measure><attributes><divisions>1</divisions></attributes>'
+          '<direction><direction-type><words>Andante</words></direction-type></direction>'
+          '<attributes><clef number="1"><sign>G</sign><line>2</line></clef></attributes>'
+          '<note><rest/><duration>1</duration></note></measure></part></score-partwise>')
+        before = ET.tostring(root)
+        pipeline._give_every_staff_a_clef(root)
+        self.assertEqual(ET.tostring(root), before)
+
+    def test_later_entering_staff_still_gets_an_initial_clef_without_removing_source(self):
+        root = ET.fromstring('<score-partwise><part><measure number="1"><attributes><divisions>1</divisions>'
+          '<staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef></attributes>'
+          '<note><rest/><duration>4</duration><staff>1</staff></note></measure>'
+          '<measure number="2"><print new-system="yes"/><attributes><clef number="2"><sign>F</sign>'
+          '<line>4</line></clef></attributes><note><rest/><duration>4</duration><staff>2</staff></note>'
+          '</measure></part></score-partwise>')
+        source_clef = ET.tostring(root.find('part/measure[@number="2"]/attributes/clef'))
+        pipeline._give_every_staff_a_clef(root)
+        first = root.find('part/measure/attributes')
+        self.assertEqual([clef.get('number') for clef in first.findall('clef')], ['1', '2'])
+        self.assertEqual(ET.tostring(root.find('part/measure[@number="2"]/attributes/clef')), source_clef)
+        self.assertEqual(len(root.findall('.//clef')), 3)
+        before = ET.tostring(root)
+        pipeline._give_every_staff_a_clef(root)
+        self.assertEqual(ET.tostring(root), before)
+
+    def test_clef_after_a_musical_event_keeps_the_existing_initialization_behavior(self):
+        root = ET.fromstring('<score-partwise><part><measure><attributes><divisions>1</divisions></attributes>'
+          '<note><rest/><duration>1</duration></note><attributes><clef><sign>F</sign><line>4</line></clef>'
+          '</attributes><note><rest/><duration>1</duration></note></measure></part></score-partwise>')
+        pipeline._give_every_staff_a_clef(root)
+        self.assertEqual(len(root.findall('.//clef')), 2)
+        self.assertEqual(root.findtext('part/measure/attributes/clef/sign'), 'F')
+
     def test_repeat_line_break_does_not_create_a_musical_bar(self):
         root = ET.fromstring('<score-partwise><part id="P1"><measure number="1"><note><rest/></note></measure>'
           '<measure number="2"><print new-system="yes"/><attributes><time><beats>3</beats><beat-type>8</beat-type></time></attributes></measure>'
