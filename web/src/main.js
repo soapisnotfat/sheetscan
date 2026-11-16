@@ -1,5 +1,6 @@
 import { annotate, tokens } from './annotate.js'
 import { loadPages } from './input.js'
+import { prepareMetadata } from './metadata.js'
 import { ocr, readNumber } from './ocr.js'
 import { Player } from './player.js'
 import { Score, verovio } from './score.js'
@@ -124,7 +125,8 @@ async function open(xml) {
   score = new Score(xml)
   selected = null
   progress('Reading text…', 1, 1)
-  annotate(score.doc, (await readText()).map(tokens))
+  const prepared = await prepareMetadata(pages, await readText(), score.doc)
+  annotate(score.doc, prepared.text.map(tokens), prepared)
   $('title').value = score.title
   $('scan').replaceChildren(...pages.map(scanPage))
   show('work')

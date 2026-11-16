@@ -1,12 +1,12 @@
 # Browser converter dependency
 
-The SDK wraps the `v8-bounded-fragments` recognition policy, PDF rendering, local text OCR, multirest counts and MusicXML annotation. The main homr recognizer weights were not fine-tuned; this fork trains small glyph classifiers and improves the recognition pipeline. Independent varied-cohort qualification is required before claiming the user's 99% target. Development scores and isolated glyph scores are not population accuracy.
+The SDK wraps the `v10-source-metadata` recognition policy, PDF rendering, local text OCR, multirest counts and MusicXML annotation. The main homr recognizer weights were not fine-tuned; this fork trains small glyph classifiers and improves the recognition pipeline. Independent varied-cohort qualification is required before claiming the user's 99% target. Development scores and isolated glyph scores are not population accuracy.
 
 Build a distributable from the explicit public allowlist:
 
 ```sh
 cd web
-npm run build:sdk -- --expected-manifest=../dev-samples/candidates/v8-bounded-fragments/manifest.json
+npm run build:sdk -- --expected-manifest=../dev-samples/candidates/v10-source-metadata/manifest.json
 ```
 
 The ignored local manifest is a verification input; it is not copied into the package. `dist-sdk/` contains only built code, the three recognition ONNX models, `homr.zip`, and the reviewed tracked public assets. Local regression PDFs, `dev-samples/`, local manifests and source score files are excluded. `public-build.json` records distributable file hashes; the build checks its model/archive and recognition-worker hashes against the frozen candidate when `--expected-manifest` is supplied. `build:public` provides the same allowlist for the standalone app; deployment uses that output rather than arbitrary local `dist/` contents.
@@ -29,6 +29,8 @@ converter.close()
 ```
 
 One conversion runs at a time per instance; after cancellation or an error the instance can be used again. Each conversion terminates its recognition workers and revokes temporary image URLs. Cancellation interrupts the OMR worker immediately; a shared local text-OCR call already in progress may finish in the background. The API never changes the host project, navigates, reloads, or installs a service worker. The host controls when to replace its project and how to cache SDK/runtime assets in its existing offline service worker.
+
+Source tempo annotation preserves the written beat unit and dot, with the corresponding quarter-note playback tempo. Pixel-only marks require a note glyph, equality sign and accepted local numeric OCR. Explicit Alto Saxophone source evidence can establish the conventional E-flat transposition for one unambiguous part; existing transposition and concert-score declarations are preserved, and written notes and keys stay unchanged. `result.audit.metadata` records the source evidence, applied changes and unknown bindings.
 
 `capabilities()` reports JSPI and shared-memory support. JSPI is preferred; `forceSharedMemory: true` tests the alternate worker bridge. Without JSPI the host must already provide cross-origin isolation and SharedArrayBuffer. Unsupported pages reject with `code === 'UNSUPPORTED_BROWSER'`; the SDK does not register a COI service worker or reload the app. Desktop verification is not a mobile memory/performance guarantee.
 

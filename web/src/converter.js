@@ -3,8 +3,9 @@
 import { loadPages } from './input.js'
 import { ocr, readNumber } from './ocr.js'
 import { annotate, tokens } from './annotate.js'
+import { prepareMetadata } from './metadata.js'
 
-export const RECOGNIZER_VERSION = 'v9-source-coverage'
+export const RECOGNIZER_VERSION = 'v10-source-metadata'
 
 export function capabilities() {
   const jspi = typeof WebAssembly.Suspending === 'function'
@@ -108,9 +109,11 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
       doc = new DOMParser().parseFromString(result.xml, 'application/xml')
     }
     onProgress({ phase: 'text', text: 'Reading printed text…' })
-    annotate(doc, (await wait(words)).map(tokens))
+    const prepared = await wait(prepareMetadata(pages, await wait(words), doc))
+    annotate(doc, prepared.text.map(tokens), prepared)
     signal?.throwIfAborted()
     const audit = JSON.parse(doc.querySelector('miscellaneous-field[name="conversion-audit"]')?.textContent ?? '{}')
+    audit.metadata = JSON.parse(doc.querySelector('miscellaneous-field[name="metadata-audit"]')?.textContent ?? '[]')
     return {
       musicxml: new XMLSerializer().serializeToString(doc), audit,
       rasters: pages.map(({ png, width, height }) => ({ png, width, height })),
