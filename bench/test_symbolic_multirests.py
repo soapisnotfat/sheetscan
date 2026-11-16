@@ -86,6 +86,20 @@ def draw_case(font_name,unit,aa,count=4,style='symbols',negative=None,directory=
 
 
 class Regressions(unittest.TestCase):
+    def setUp(self):
+        # Default discovery must not require another experiment's /tmp cache.
+        # The optional font sweep remains explicit; a clean checkout reports
+        # the missing development-only font inputs rather than failing.
+        try:
+            font_path('Bravura',_FONT_DIR)
+            text=Path(_FONT_DIR or '/tmp/tuplet-glyph-fonts')/'NotoSans.ttf'
+            if not text.exists():
+                text=Path('/tmp/tuplet-glyph-fonts/NotoSans.ttf')
+            if not text.exists():
+                raise FileNotFoundError
+        except (StopIteration,FileNotFoundError):
+            self.skipTest('Optional OFL font rasters unavailable; prepare the font manifest and pass --fonts for the explicit sweep')
+
     def test_whole_rest_is_not_four_bars(self):
         for negative in ('whole-with-number','half-with-number','barline','tempo','number-only','no-number','displaced-number','beam','other-staff'):
             im,boxes,_=draw_case('Bravura',16,3,negative=negative)
