@@ -39,7 +39,9 @@ export function createScoreConverter(defaults = {}) {
 
 export async function convertScore(files, { signal, onProgress = () => {}, printedTuplets = true, forceSharedMemory = false } = {}) {
   const supported = capabilities()
-  signal?.throwIfAborted()
+  const abortError = () => signal?.reason?.name === 'AbortError' ? signal.reason : new DOMException('Score conversion cancelled', 'AbortError')
+  const checkAbort = () => { if (signal?.aborted) throw abortError() }
+  checkAbort()
   if (!supported.supported || forceSharedMemory && !supported.sharedMemory) {
     const error = new Error('Score conversion requires WebAssembly JSPI or a cross-origin isolated page with shared memory')
     error.code = 'UNSUPPORTED_BROWSER'
@@ -48,12 +50,12 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
   files = Array.from(files)
   if (!files.length) throw new Error('Choose at least one score PDF or image')
   const started = performance.now(), urls = []
-  let worker, networkWorker, pending, rejectAbort
+  let worker, networkWorker, pending, rejectAbort, rendering
   const aborted = new Promise((_, reject) => { rejectAbort = reject })
   // The abort may occur during page rendering, before an inference request.
   aborted.catch(() => {})
   const cancel = () => {
-    const error = signal.reason ?? new DOMException('Score conversion cancelled', 'AbortError')
+    const error = abortError()
     worker?.terminate()
     networkWorker?.terminate()
     pending?.reject(error)
@@ -63,14 +65,14 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
   const wait = promise => Promise.race([promise, aborted])
   try {
     onProgress({ phase: 'rendering', text: 'Preparing score pages…' })
-    signal?.throwIfAborted()
-    const rendering = loadPages(files, n => onProgress({ phase: 'rendering', page: n }))
+    checkAbort()
+    rendering = loadPages(files, n => onProgress({ phase: 'rendering', page: n }), { signal })
     rendering.then(pages => {
       if (signal?.aborted) pages.forEach(p => URL.revokeObjectURL(p.url))
     }).catch(() => {})
     const pages = await wait(rendering)
     urls.push(...pages.map(p => p.url))
-    signal?.throwIfAborted()
+    checkAbort()
     const words = Promise.all(pages.map(p => p.text.length ? p.text : ocr(p)))
     words.catch(() => {})
     worker = new Worker(new URL('./omr.worker.js', import.meta.url), { type: 'module' })
@@ -93,7 +95,7 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
       port = channel.port2
     }
     onProgress({ phase: 'recognizing', text: 'Reading score…' })
-    signal?.throwIfAborted()
+    checkAbort()
     let result = await wait(send({ pages: pages.map(p => p.png), printedTuplets, port }, port ? [port] : []))
     let doc = new DOMParser().parseFromString(result.xml, 'application/xml')
     if (doc.querySelector('parsererror')) throw new Error('Recognition returned invalid MusicXML')
@@ -111,7 +113,7 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
     onProgress({ phase: 'text', text: 'Reading printed text…' })
     const prepared = await wait(prepareMetadata(pages, await wait(words), doc))
     annotate(doc, prepared.text.map(tokens), prepared)
-    signal?.throwIfAborted()
+    checkAbort()
     const audit = JSON.parse(doc.querySelector('miscellaneous-field[name="conversion-audit"]')?.textContent ?? '{}')
     audit.metadata = JSON.parse(doc.querySelector('miscellaneous-field[name="metadata-audit"]')?.textContent ?? '[]')
     return {
@@ -121,6 +123,7 @@ export async function convertScore(files, { signal, onProgress = () => {}, print
       milliseconds: performance.now()-started,
     }
   } finally {
+    if (signal?.aborted) await rendering?.catch(() => {})
     signal?.removeEventListener('abort', cancel)
     worker?.terminate()
     networkWorker?.terminate()
