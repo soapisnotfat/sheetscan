@@ -44,6 +44,20 @@ def sources(number=2):
 
 
 class PrintedTupletTests(unittest.TestCase):
+    def test_fragmented_five_is_not_bridged_into_nearby_beam(self):
+        # CC0 self-authored piano render, PDF.js 200dpi: a staff line splits
+        # this 5 and the beam is only two pixels below it. A global close used
+        # to merge it into a 162x96 component and discard the number entirely.
+        path = Path(__file__).parent/'fixtures/tuplet-five-beam-fragment.png'
+        image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+        marks = read_tuplet_marks(image, [[0, 73, 149, 130]])
+        self.assertEqual([m['number'] for m in marks], [5])
+        self.assertEqual(marks[0]['box'], [51, 55, 69, 77])
+        # The same nearby staff/beam/stems alone must not manufacture a digit.
+        image[55:77, 51:69] = 255
+        image[73:74, :] = 0
+        self.assertEqual(read_tuplet_marks(image, [[0, 73, 149, 130]]), [])
+
     def test_candidate_uses_printed_digit_and_does_not_edit(self):
         root = sample()
         before = ET.tostring(root)

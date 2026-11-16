@@ -59,7 +59,15 @@ def read_tuplet_marks(image, boxes):
             ink = (gray[y0:y1, x0:x1] < 160).astype(np.uint8)
             if region == 'staff':
                 lines = cv2.morphologyEx(ink, cv2.MORPH_OPEN, np.ones((1, max(12, round(unit*8))), np.uint8))
-                ink = cv2.morphologyEx(ink-lines, cv2.MORPH_CLOSE, np.ones((3, 1), np.uint8))
+                fragments = ink-lines
+                _, components, bounds, _ = cv2.connectedComponentsWithStats(fragments)
+                eligible = np.ones(len(bounds), np.uint8)
+                eligible[0] = 0
+                # Bridge digit fragments without connecting them to a nearby
+                # beam/stem. These components already exceed the final glyph
+                # size limits, so cannot be part of a supported complete figure.
+                eligible[(bounds[:, 2] > 2.3*unit) | (bounds[:, 3] > 1.9*unit)] = 0
+                ink = cv2.morphologyEx(eligible[components], cv2.MORPH_CLOSE, np.ones((3, 1), np.uint8))
             _, labels, stats, _ = cv2.connectedComponentsWithStats(ink)
             for label, (x, y, width, height, area) in enumerate(stats[1:], 1):
                 if not (.75*unit <= height <= 1.9*unit and .3 <= width/height <= 1.2

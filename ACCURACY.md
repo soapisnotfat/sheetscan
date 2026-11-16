@@ -44,6 +44,8 @@
 
 主 homr 网络没有整体微调。新增的小型字形模型只提供 source evidence，详见 `ACCURACY_GLYPHS.md`、`ACCURACY_ACCIDENTALS.md`；形状 logits 不是最终识谱置信概率。浏览器依赖 API、取消／重试与安全打包说明见 `BROWSER_SDK.md`。v7 已冻结供独立分组验收，后续修复另建版本。
 
+v8 只修上述提取问题：先排除已经超过合法数字尺寸的 beam／stem 组件，再连接数字碎片，保持分类器和策略不变。同一 PDF、完全相同的 PDF.js PNG 字节下，完整两页钢琴谱从 365/375 恢复为 375/375，关键资格字段也匹配。新渲染的432帧压力测试中，正例从59/216到179/216，负例216/216仍拒绝；正例帧里的30个额外检测两版都存在，不能写成“零误检”。Eugene字体的2／3仍有拒识。这些只是开发／提取证据，跨来源独立质量仍需另验。可公开复现摘要见 `bench/results/extractor-v8-development.json`。
+
 ## 复现
 
 原有原生识谱环境需要 homr 及其模型；浏览器依赖使用 `web/package-lock.json`。原生数字 OCR 的可选 `--read-numbers` 复用本机 Tesseract 命令；浏览器使用已有的 Tesseract.js，不要求最终用户安装 Python。

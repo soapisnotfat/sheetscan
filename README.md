@@ -1,8 +1,9 @@
 # Sheetscan
 
 > **Dripping accuracy research fork.** The product goal is automatic PDF import
-> with at least 99.5% accuracy on representative practice scores, aiming for
-> 99.9%. This is a target, not an achieved result. Manual correction is a fallback.
+> with about 99% automatic event precision/recall across independent varied
+> practice-score tests, with structure, rhythm, route and tempo checked separately.
+> This is a target, not an achieved result. Manual correction is a fallback.
 > See [ACCURACY.md](ACCURACY.md) for the evaluation contract, experiments and
 > remaining work. The benchmark figures and hosted demo below belong to upstream;
 > they do not establish this fork's accuracy on our use case.

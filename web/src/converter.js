@@ -4,7 +4,7 @@ import { loadPages } from './input.js'
 import { ocr, readNumber } from './ocr.js'
 import { annotate, tokens } from './annotate.js'
 
-export const RECOGNIZER_VERSION = 'v7-007577e'
+export const RECOGNIZER_VERSION = 'v8-bounded-fragments'
 
 export function capabilities() {
   const jspi = typeof WebAssembly.Suspending === 'function'
