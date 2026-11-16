@@ -1,0 +1,66 @@
+{
+  "model_name": "AccidentalGlyphCNN",
+  "license": "OFL-1.1",
+  "fonts": [
+    {
+      "name": "Bravura",
+      "filename": "Bravura.otf",
+      "sha256": "cdf0f893ee1fdb64b7f6713d71ee0dcfc349c0ac01429a8e451b01a9e79f5f3b",
+      "url": "https://raw.githubusercontent.com/steinbergmedia/bravura/master/redist/otf/Bravura.otf",
+      "license_url": "https://raw.githubusercontent.com/steinbergmedia/bravura/master/LICENSE.txt",
+      "license_file": "Bravura-LICENSE.txt",
+      "license_sha256": "bdca252186865f3b2c0e76da4a4e335c14ba1d37f80194fca254ddfa88e84fbf",
+      "split": "train/dev"
+    },
+    {
+      "name": "Leipzig",
+      "filename": "Leipzig.otf",
+      "sha256": "ee0457af412610b58f7f47ebc7584e6a15fd1f752c399597e063a550959d0b31",
+      "url": "https://raw.githubusercontent.com/rism-digital/leipzig/main/Leipzig.otf",
+      "license_url": "https://raw.githubusercontent.com/rism-digital/leipzig/main/LICENSE.txt",
+      "license_file": "Leipzig-LICENSE.txt",
+      "license_sha256": "77b3d0cfb6fa5f4784d64b9ddabffc1f8c9544b0389c4a13088e7b94defe1763",
+      "split": "train/dev"
+    },
+    {
+      "name": "Leland",
+      "filename": "Leland.otf",
+      "sha256": "293788a40584b1908e3a0f219833f6a13e9a1aaf671e08fd26ad18fad2631b35",
+      "url": "https://raw.githubusercontent.com/MuseScoreFonts/Leland/main/Leland.otf",
+      "license_url": "https://raw.githubusercontent.com/MuseScoreFonts/Leland/main/LICENSE.txt",
+      "license_file": "Leland-LICENSE.txt",
+      "license_sha256": "5267f6c8e8bac5b78ac024be1bc6e325eb3621485647902fb684cc41e22ffc11",
+      "split": "train/dev"
+    },
+    {
+      "name": "Sebastian",
+      "filename": "Sebastian.otf",
+      "sha256": "661ff0227af5816ffba947e432365d7c3d42a23a28793a70b3db1eda6a3d027b",
+      "url": "https://raw.githubusercontent.com/fkretlow/sebastian/master/fonts/Sebastian.otf",
+      "license_url": "https://raw.githubusercontent.com/fkretlow/sebastian/master/fonts/OFL.txt",
+      "license_file": "Sebastian-LICENSE.txt",
+      "license_sha256": "eae3dd8a95b13bed17e147ab40b2411ac693d9c7a74b284c03e1bdbb530b55b0",
+      "split": "train/dev"
+    },
+    {
+      "name": "NotoSans",
+      "filename": "NotoSans.ttf",
+      "sha256": "bfb7bb691513f12e734dc346c03a03f784912432d7e3fa8e56efcf906fe86b3d",
+      "url": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans%5Bwdth,wght%5D.ttf",
+      "license_url": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/OFL.txt",
+      "license_file": "NotoSans-LICENSE.txt",
+      "license_sha256": "cee9892f9f0cc8fe882c9e9537ee6a89621d86ee7ceaf70b02e2b2b1c25c061a",
+      "split": "text-negative-all-splits"
+    },
+    {
+      "name": "Eugene",
+      "filename": "Eugene.otf",
+      "sha256": "2f969fe9788592a712be35e53783cd9443eef70a3c93174fb1d11f99ed146b92",
+      "url": "https://raw.githubusercontent.com/mikkopatama/eugenefont/main/Eugene.otf",
+      "license_url": "https://raw.githubusercontent.com/mikkopatama/eugenefont/main/LICENSE.txt",
+      "license_file": "Eugene-LICENSE.txt",
+      "license_sha256": "852b484f301e2ca787b91c6dcaccd95e7cb480587aca46c3d4f1c64b61923eae",
+      "split": "new-unseen-font-test-only"
+    }
+  ]
+}
