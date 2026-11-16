@@ -5,7 +5,7 @@ import { ocr, readNumber } from './ocr.js'
 import { annotate, tokens } from './annotate.js'
 import { prepareMetadata } from './metadata.js'
 
-export const RECOGNIZER_VERSION = 'v11-natural-binding'
+export const RECOGNIZER_VERSION = 'v12-source-tempo'
 
 export function capabilities() {
   const jspi = typeof WebAssembly.Suspending === 'function'

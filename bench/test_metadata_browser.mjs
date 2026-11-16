@@ -13,17 +13,20 @@ const evidence=cases.length?JSON.parse(await fs.readFile(evidencePath,'utf8')):{
 const html=`<!doctype html><script type="module">
 import {loadPages} from '/src/input.js';import {tokens,annotate} from '/src/annotate.js';import {prepareMetadata} from '/src/metadata.js';
 import {runMetadataFixtures} from '/@fs/${root}/bench/metadata_fixture_tests.mjs';
-try{const fixtures=await runMetadataFixtures(),cases=await(await fetch('/metadata-cases')).json(),evidence=await(await fetch('/metadata-evidence')).json(),results=[];
+import {runTempoSourceFixtures} from '/@fs/${root}/bench/tempo_source_fixtures.mjs';
+try{const sourceFixtures=await runTempoSourceFixtures(async(frozen,pages)=>{await fetch('/metadata-freeze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(frozen,null,2)});for(const {id,page} of pages)await fetch('/metadata-raster/'+id+'.png',{method:'POST',body:page.png})}),fixtures=await runMetadataFixtures(),cases=await(await fetch('/metadata-cases')).json(),evidence=await(await fetch('/metadata-evidence')).json(),results=[];
 for(let i=0;i<cases.length;i++){const bytes=await(await fetch('/metadata-input/'+i)).arrayBuffer(),file=new File([bytes],cases[i].filename,{type:cases[i].filename.endsWith('.pdf')?'application/pdf':'image/png'}),pages=await loadPages([file]),doc=new DOMParser().parseFromString(await(await fetch('/metadata-xml/'+i)).text(),'application/xml');
 const music=()=>JSON.stringify([...doc.querySelectorAll('note > pitch,attributes > key')].map(e=>e.outerHTML)),before=music();
 const raw=pages.map((page,p)=>page.text.length?page.text:(evidence.results.find(r=>r.name===cases[i].name&&r.page===p)?.ocrWords??[]).filter(w=>w.confidence>55&&(/\\p{L}|^-+$|=|^\\d{2,3}\\)?$/u.test(w.str))).map(w=>({...w,source:'ocr'})));
 const prepared=await prepareMetadata(pages,raw,doc),added=annotate(doc,prepared.text.map(tokens),prepared),xml=new XMLSerializer().serializeToString(doc);if(before!==music())throw Error('Written pitch/key changed');await fetch('/metadata-output/'+cases[i].name+'.musicxml',{method:'POST',body:xml});
 results.push({name:cases[i].name,written_music_unchanged:true,added,layout:prepared.layout,tempoText:prepared.text.map(items=>tokens(items).filter(t=>/=|^\\d{2,3}$/.test(t.str))),tempos:[...doc.querySelectorAll('direction:has(metronome)')].map(d=>({measure:d.closest('measure').getAttribute('number'),unit:d.querySelector('beat-unit').textContent,dotted:!!d.querySelector('beat-unit-dot'),bpm:+d.querySelector('per-minute').textContent,sound:+d.querySelector('sound').getAttribute('tempo')})),transpose:[...doc.querySelectorAll('transpose')].map(t=>t.outerHTML),prepared:prepared.sourceAudit});console.log(JSON.stringify(results.at(-1)));}
-window.result={fixtures,results};}catch(e){window.error=String(e.stack||e);}</script>`
+window.result={fixtures,sourceFixtures,results};}catch(e){window.error=String(e.stack||e);}</script>`
 const middleware=async(req,res,next)=>{try{
  if(req.url==='/metadata-probe'){res.setHeader('Content-Type','text/html');res.end(html);return}
  if(req.url==='/metadata-cases'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify(cases.map(c=>({name:c.name,filename:path.basename(c.file)}))));return}
  if(req.url==='/metadata-evidence'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify(evidence));return}
+ if(req.url==='/metadata-freeze'&&req.method==='POST'){const chunks=[];for await(const c of req)chunks.push(c);await fs.writeFile(path.join(out,'fresh-frozen.json'),Buffer.concat(chunks));res.end('ok');return}
+ if(req.url.startsWith('/metadata-raster/')&&req.method==='POST'){const name=path.basename(req.url);if(!/^[a-z0-9-]+\.png$/.test(name))throw Error('invalid fixture name');const chunks=[];for await(const c of req)chunks.push(c);await fs.mkdir(path.join(out,'fresh-rasters'),{recursive:true});await fs.writeFile(path.join(out,'fresh-rasters',name),Buffer.concat(chunks));res.end('ok');return}
  if(req.url.startsWith('/metadata-input/')){res.end(await fs.readFile(cases[Number(req.url.split('/').at(-1))].file));return}
  if(req.url.startsWith('/metadata-xml/')){res.end(await fs.readFile(cases[Number(req.url.split('/').at(-1))].xml));return}
  if(req.url.startsWith('/metadata-output/')&&req.method==='POST'){const name=path.basename(req.url);if(!/^[a-z]+\.musicxml$/.test(name))throw Error('invalid name');const chunks=[];for await(const c of req)chunks.push(c);await fs.writeFile(path.join(out,name),Buffer.concat(chunks));res.end('ok');return}

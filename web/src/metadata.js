@@ -2,7 +2,7 @@
 // This module never reads reference pitches, target tempos or expected bar IDs.
 import { readNumber } from './ocr.js'
 
-const BEATS = { whole: 4, half: 2, quarter: 1, eighth: .5, '16th': .25 }
+const BEATS = { whole: 4, half: 2, quarter: 1, eighth: .5, '16th': .25, '32nd': .125, '64th': .0625 }
 const UNIT_TEXT = { quarter: 'q', half: 'h', eighth: 'e' }
 
 export function quarterTempo({ bpm, unit, dotted = false }) {
@@ -78,7 +78,7 @@ function beatGlyph(component, image, unit) {
   for(let xx=x;xx<x+w;xx++) {
     let run=0,longest=0
     for(let yy=y;yy<y+h;yy++){run=get(xx,yy)?run+1:0;longest=Math.max(longest,run)}
-    if(longest>best){best=longest;stem=xx}
+    if(longest>=best){best=longest;stem=xx}
   }
   if(best<.65*h || stem<x+.4*w) return null
   const headTop=y+Math.round(.6*h), headBottom=y+h,headRight=Math.min(x+w,stem+Math.max(1,Math.round(.12*unit)))
@@ -148,7 +148,9 @@ export async function detectTempoRegions(page, staffs) {
       const candidates=comps.filter(c=>c.x+c.w<eq[0]-.03*u&&eq[0]-(c.x+c.w)<2.3*u&&Math.abs((c.y+c.h)-eq[3])<1.15*u)
         .map(c=>beatGlyph(c,scene,u)).filter(Boolean).sort((a,b)=>eq[0]-a.glyphBox[2]-(eq[0]-b.glyphBox[2]))
       if(!candidates.length)continue
-      const beat=candidates[0],digits=comps.filter(c=>c.x>eq[2]&&c.x-eq[2]<5*u&&c.h>=.65*u&&c.h<=2.7*u&&c.w>=.12*u&&c.w<=4.2*u&&Math.abs(c.y+c.h-eq[3])<.8*u).sort((a,b)=>a.x-b.x)
+      // Old-style figures can descend below the equality baseline (notably 7).
+      // Keep the full connected digit while retaining the same local mark ROI.
+      const beat=candidates[0],digits=comps.filter(c=>c.x>eq[2]&&c.x-eq[2]<5*u&&c.h>=.65*u&&c.h<=2.7*u&&c.w>=.12*u&&c.w<=4.2*u&&Math.abs(c.y+c.h-eq[3])<1.25*u).sort((a,b)=>a.x-b.x)
       if(!digits.length || digits[0].x-eq[2]>1.3*u)continue
       const grouped=[digits[0]]
       for(const digit of digits.slice(1)){const prev=grouped.at(-1);if(digit.x-prev.x-prev.w>1.1*u)break;grouped.push(digit)}
@@ -167,16 +169,23 @@ export async function detectTempoRegions(page, staffs) {
 /** Optional async stage; annotate itself remains synchronous and deterministic. */
 export async function prepareMetadata(pages, rawText, doc, { readTempoNumber=readNumber } = {}) {
   const layout=JSON.parse(doc.querySelector('miscellaneous-field[name="staff-layout"]')?.textContent??'[]')
-  const text=pages.map((page,i)=>(rawText?.[i]??page.text??[]).map(t=>({...t}))),audit=[]
+  const text=pages.map((page,i)=>(rawText?.[i]??page.text??[]).map(t=>({...t,requiresUnitGlyph:true}))),audit=[]
   for(let page=0;page<pages.length;page++) {
     if(!layout[page]?.length){layout[page]=await imageStaffBoxes(pages[page]);audit.push({page,kind:'staff-evidence',source:'horizontal-five-line-image',count:layout[page].length})}
-    // A PDF's actual metronome-note codepoint already establishes its unit.
-    if((pages[page].text??[]).some(t=>/[\uECA3\uECA5\uECA7\uE1D3\uE1D5\uE1D7\uF071\uF068\uF065]/u.test(t.str)))continue
     if(!layout[page]?.length){audit.push({page,kind:'tempo-image',status:'unknown',reason:'no-staff-layout'});continue}
-    for(const region of await detectTempoRegions(pages[page],layout[page])) {
+    const regions=await detectTempoRegions(pages[page],layout[page])
+    audit.push({page,kind:'tempo-image-scan',regionCount:regions.length})
+    for(const region of regions) {
+      // Evidence belongs to this mark, not every mark on the page. A readable
+      // PDF beat elsewhere must not suppress a different image-only metronome.
+      const sourceBeat=(pages[page].text??[]).find(t=>/[\uECA2-\uECAE\uE1D3\uE1D5\uE1D7\uF071\uF068\uF065]/u.test(t.str)
+        &&Math.abs(t.x-region.x)<region.h&&Math.abs(t.y-region.y)<Math.max(t.h,region.h))
+      const sourceNumber=sourceBeat&&text[page].some(t=>/=\s*(?:c(?:irc)?a\.?\s*)?\d{2,3}/.test(t.str)
+        &&t.x<=region.numberBox[2]&&t.x+t.w>=region.equalityBox[0]&&Math.abs(t.y-region.y)<Math.max(t.h,region.h))
+      if(sourceNumber){audit.push({page,kind:'tempo-image',status:'text-covered',region});continue}
       const conflict=text[page].some(t=>{
         const match=/^\s*([^\s=]+)\s*=\s*\d{2,3}\s*$/.exec(t.str)
-        return match&&!/^[qhe]\.?$/.test(match[1])&&t.x<=region.equalityBox[0]&&t.x+t.w>=region.numberBox[0]&&Math.abs(t.y-region.y)<Math.max(t.h,region.h)
+        return match&&/[\p{L}\p{N}]/u.test(match[1])&&!/^[qhe]\.?$/.test(match[1])&&t.x<=region.equalityBox[0]&&t.x+t.w>=region.numberBox[0]&&Math.abs(t.y-region.y)<Math.max(t.h,region.h)
       })
       if(conflict){audit.push({page,kind:'tempo-image',status:'unknown',reason:'text-unit-conflict',region});continue}
       const reading=await readTempoNumber(pages[page],region.numberBox)
@@ -190,7 +199,7 @@ export async function prepareMetadata(pages, rawText, doc, { readTempoNumber=rea
       text[page]=text[page].filter(t=>!/^\s*(?:\d{1,3}|[^\s=]{0,3}\s*=\s*\d{2,3})\s*$/.test(t.str)
         || Math.min(t.x+t.w,c)-Math.max(t.x,a)<.5*t.w || Math.min(t.y,d)-Math.max(t.y-t.h,b)<.4*t.h)
       text[page].push({str:`${UNIT_TEXT[region.unit]}${region.dotted?'.':''}=${reading.value}`,x:region.x,y:region.y,h:region.h,w:region.w,
-        source:'verified-image-tempo',tempoEvidence:{...region,reading}})
+        source:'verified-image-tempo',requiresUnitGlyph:true,tempoEvidence:{...region,reading}})
     }
   }
   return {text,layout,sourceAudit:audit}
