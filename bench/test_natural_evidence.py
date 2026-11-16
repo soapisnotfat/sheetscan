@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import sys
 import unittest
 import xml.etree.ElementTree as ET
@@ -156,6 +157,7 @@ class NaturalEvidenceTests(unittest.TestCase):
         heads = [{'staff':0,'center':[71,52],'position':4,'id':'a'},
                  {'staff':0,'center':[72,53],'position':4,'id':'b'}]
         evidence = read_accidentals(image,[[0,20,120,60]],heads)
+        json.dumps(evidence)  # NumPy comparison booleans must not leak to the Worker audit.
         self.assertTrue(evidence)
         self.assertTrue(all(e['unknown'] and e['kind'] is None for e in evidence))
 

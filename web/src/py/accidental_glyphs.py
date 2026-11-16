@@ -140,7 +140,7 @@ def accidental_candidates(image, staff_boxes, heads):
             _,index = choices[0]
             found.append({'staff': staff_index, 'box': [x0+int(x),y0+int(y),x0+int(x+w),y0+int(y+h)],
                           'head_index': index, 'position': int(heads[index]['position']),
-                          'ambiguous': len(choices) > 1 and choices[1][0]-choices[0][0] < .35*unit,
+                          'ambiguous': bool(len(choices) > 1 and choices[1][0]-choices[0][0] < .35*unit),
                           'ink': (labels[y:y+h,x:x+w] == label).astype(np.float32)})
     return found
 
