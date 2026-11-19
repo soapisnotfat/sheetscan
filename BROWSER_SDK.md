@@ -17,6 +17,8 @@ The fork is AGPL-3.0; glyph artifacts retain their OFL notices. The package incl
 
 The `v16-source-grace-slurs` SDK checks a decoded same-pitch grace-to-principal curve against the original page before the exporter classifies it as a tie. A clearly separated arc anchored to both noteheads preserves the slur. Both anchors must come from an unambiguous source-note match. The normal tie rule handles pairs with unsupported or ambiguous geometry. `result.audit.graceSlurChanges` identifies each retained slur by its note IDs, page, and source box. The 111 cropped controls in `bench/fixtures/grace-curves.*` include printed ties and absent curves.
 
+The `v17-source-beams` SDK writes numbered MusicXML beams when a visible stem-to-stem stroke has unique matches in the same measure, voice and staff and agrees with the written durations. The source bindings cover secondary levels, supported short hooks, grace groups and rests inside a continuous beam. `result.audit.sourceBeamChanges` records the contributing connections and hooks. This pass derives engraving from the source image. It leaves pitch, onset, duration and playback semantics in the original recognition path.
+
 Host the **whole** SDK directory under the app's origin, preserving `assets/` and `models/`. Recognition workers are module workers. Runtime dependencies download from pinned public CDNs; input scores are processed locally and are not uploaded.
 
 ```js

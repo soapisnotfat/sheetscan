@@ -46,12 +46,44 @@ def _connection(ink,a,b,staff):
     # beam. Record uncertainty instead of guessing the written flag count.
     beams=[]
     for low,high in bands:
+        if high-low+1 < max(2, round(.18*unit)):continue
         midpoint=(low+high)/2;ys=baseline+direction*midpoint
         hits=sum(min(abs(y-line) for line in _core(staff,x))<.13*unit for x,y in zip(xs,ys))/len(xs)
         if not (hits>.7 and high-low+1<.4*unit):beams.append((low,high))
     if not beams or beams[0][0]>.3*unit or len(beams)>3:return None
     return {'count':len(beams),'from':[a['x'],a['tip']],'to':[b['x'],b['tip']],
             'bands':[list(v) for v in beams],'coverage':[round(v,3) for v in coverage]}
+
+
+def has_secondary_hook(ink, stem, neighbor, connection, unit):
+    """Check for a distinct short stroke under a confirmed primary beam."""
+    span = abs(neighbor['x'] - stem['x'])
+    if span < 1.6 * unit or connection['count'] != 1:
+        return False
+    direction = 1 if neighbor['x'] > stem['x'] else -1
+    inward = 1 if stem['direction'] == 'up' else -1
+    slope = (neighbor['tip'] - stem['tip']) / (neighbor['x'] - stem['x'])
+    near = np.arange(round(.25 * unit), round(.90 * unit) + 1)
+    far = np.arange(round(.72 * span), round(.90 * span) + 1)
+    offsets = np.arange(connection['bands'][0][1] + max(1, round(.12 * unit)),
+                        round(1.45 * unit) + 1)
+    if not len(offsets):
+        return False
+
+    def coverage(distances):
+        xs = np.rint(stem['x'] + direction * distances).astype(int)
+        ys = np.rint(stem['tip'] + slope * (xs - stem['x']) + inward * offsets[:, None]).astype(int)
+        if (xs.min() < 0 or xs.max() >= ink.shape[1] or ys.min() < 0 or ys.max() >= ink.shape[0]):
+            return np.zeros(len(offsets))
+        return ink[ys, xs].mean(axis=1)
+
+    # The stroke needs thickness across several columns and must end before
+    # the neighboring stem. A staff line or an uninterrupted beam fails here.
+    supported = (coverage(near) >= .82) & (coverage(far) <= .24)
+    thickness = max(2, round(.21 * unit))
+    if len(supported) < thickness:
+        return False
+    return bool(np.convolve(supported.astype(int), np.ones(thickness, int), mode='valid').max() >= thickness)
 
 
 def _split_tall_head(ink, head, unit):
@@ -145,7 +177,8 @@ def read_beam_groups(image,staff_grids,raw_heads):
             x,y=head['center'];found=[]
             for index,(a,b,w,h,area) in enumerate(stats[1:],1):
                 cx=a+(w-1)/2
-                if w>.45*u or not 1.7*u<=h<=9*u or abs(cx-x)>.9*u or not b-.6*u<=y<=b+h+.6*u:continue
+                reach = min(.9*u, .5*head['size'][0] + .25*u)
+                if w>.45*u or not 1.7*u<=h<=9*u or abs(cx-x)>reach or not b-.6*u<=y<=b+h+.6*u:continue
                 found.append((index,a,b,w,h,cx))
             # A merged chord can itself survive vertical opening. Keep all
             # candidates until their extension beyond the whole chord is

@@ -20,7 +20,7 @@ _PITCH = re.compile(r'([A-G])(\d+)$')
 _BEAMS = {'beamStart', 'beamContinue', 'beamStop'}
 
 
-def prepare_context(image, rows, raw_heads, to_input, page):
+def source_geometry(rows, raw_heads, to_input):
     boxes, descriptors, grids, staff_map = [], [], [], {}
     for system, row in enumerate(rows):
         for slot, staff in enumerate(row.staffs):
@@ -44,6 +44,11 @@ def prepare_context(image, rows, raw_heads, to_input, page):
         a, b = to_input((x, y))
         c, d = to_input((x+w, y+h))
         heads.append({'center': [float(a), float(b)], 'size': [float(c-a), float(d-b)], 'angle': head.get('angle', 0)})
+    return boxes, descriptors, staff_map, grids, heads
+
+
+def prepare_context(image, rows, raw_heads, to_input, page):
+    boxes, descriptors, staff_map, grids, heads = source_geometry(rows, raw_heads, to_input)
     return {'page': page, 'boxes': boxes, 'descriptors': descriptors, 'rawSymbols': [],
             'staffMap': staff_map, 'toInput': to_input, 'rawHeads': heads,
             'meters': read_meters(image, boxes),
