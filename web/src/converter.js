@@ -6,8 +6,8 @@ import { createResourceClient } from './resources.js'
 import { annotate, tokens } from './annotate.js'
 import { prepareMetadata } from './metadata.js'
 
-export const RECOGNIZER_VERSION = 'v17-source-beams'
-export const SDK_VERSION = 'v17-source-beams'
+export const RECOGNIZER_VERSION = 'v18-source-headers'
+export const SDK_VERSION = 'v18-source-headers'
 
 export function capabilities() {
   const jspi = typeof WebAssembly.Suspending === 'function'

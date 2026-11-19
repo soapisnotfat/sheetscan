@@ -79,6 +79,34 @@ class IntegrityTests(unittest.TestCase):
         self.assertIsNotNone(measures[1].find('print'))
         self.assertEqual(len(root.findall('.//note')), 2)
 
+    def test_page_opening_repeat_keeps_the_header_in_the_first_musical_bar(self):
+        header = ('<attributes><divisions>4</divisions><time><beats>2</beats>'
+                  '<beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line>'
+                  '</clef></attributes>')
+        opening = '<barline location="left"><repeat direction="forward"/></barline>'
+        notes = '<note><rest/><duration>8</duration></note>'
+        for name, first_contents, musical_bar, removed in (
+            ('layout', '', opening + notes, True),
+            ('rest', notes, opening + notes, False),
+            ('late repeat', '', notes + opening, False),
+        ):
+            with self.subTest(name=name):
+                root = ET.fromstring('<score-partwise><part id="P1"><measure number="1">'
+                    + header + first_contents + '</measure><measure number="2">'
+                    + musical_bar + '</measure></part></score-partwise>')
+                before = ET.tostring(root)
+                changes = pipeline._remove_repeat_layout_placeholders(root)
+                if not removed:
+                    self.assertEqual(changes, [])
+                    self.assertEqual(ET.tostring(root), before)
+                    continue
+                self.assertEqual(len(changes), 1)
+                self.assertEqual(len(root.findall('.//measure')), 1)
+                first = root.find('part/measure')
+                self.assertEqual(first.findtext('attributes/divisions'), '4')
+                self.assertIsNotNone(first.find('note/rest'))
+                self.assertIsNotNone(root.find('.//repeat[@direction="forward"]'))
+
     def test_repeat_repair_preserves_real_rests_directions_and_multirests(self):
         for contents in ('<note><rest/></note>', '<direction/>', '<forward><duration>4</duration></forward>',
                          '<attributes><measure-style><multiple-rest>4</multiple-rest></measure-style></attributes>'):

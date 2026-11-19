@@ -19,6 +19,8 @@ The `v16-source-grace-slurs` SDK checks a decoded same-pitch grace-to-principal 
 
 The `v17-source-beams` SDK writes numbered MusicXML beams when a visible stem-to-stem stroke has unique matches in the same measure, voice and staff and agrees with the written durations. The source bindings cover secondary levels, supported short hooks, grace groups and rests inside a continuous beam. `result.audit.sourceBeamChanges` records the contributing connections and hooks. This pass derives engraving from the source image. It leaves pitch, onset, duration and playback semantics in the original recognition path.
 
+The `v18-source-headers` SDK reads an octave 8 above a treble clef from the two holes in the printed digit. It writes the clef shift and corresponding pitches, and checks a newly printed treble clef for its own octave mark. A page-opening repeat can flush attributes into an empty measure in the decoder export. The exporter attaches that header to the first musical bar and records the removal in `result.audit.layoutChanges`.
+
 Host the **whole** SDK directory under the app's origin, preserving `assets/` and `models/`. Recognition workers are module workers. Runtime dependencies download from pinned public CDNs; input scores are processed locally and are not uploaded.
 
 ```js
