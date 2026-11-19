@@ -524,29 +524,39 @@ def _ink(region):
     return (region < paper - 0.3 * (paper - darkest)).astype(np.uint8) * 255
 
 
-def _has_eight_below(image, x0, x1, lines, limit, bass):
-    """Is there a small "8" under a clef (an octave clef)? lines are the staff's five
-    line positions there. An 8 is the only glyph with two small holes, one above the
-    other. It may touch the clef or the bottom line, so look for the holes, not the
-    glyph. Under a bass clef the 8 straddles the bottom line; a treble clef has loops
-    of its own there, and its 8 hangs below the tail."""
-    unit, bottom = (lines[4] - lines[0]) / 4, lines[4]
-    y0, y1 = int(bottom - (1.2 if bass else 0.3) * unit), int(min(bottom + 5 * unit, limit))
-    ink = _ink(image[y0:y1, max(int(x0), 0) : int(x1)])
+def _eight_holes(region, unit, same_glyph=False):
+    ink = _ink(region)
     contours, hierarchy = cv2.findContours(ink, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     if hierarchy is None:
         return False
-    holes = [cv2.boundingRect(c) for c, h in zip(contours, hierarchy[0]) if h[3] != -1]
-    holes = [
-        (bx + w / 2, by + h / 2)
-        for bx, by, w, h in holes  # wider holes are half notes cut by a ledger line
-        if 0.15 * unit <= w <= 0.65 * unit and 0.15 * unit <= h <= 0.65 * unit
-    ]
+    holes = []
+    for contour, links in zip(contours, hierarchy[0]):
+        x, y, w, h = cv2.boundingRect(contour)
+        if links[3] != -1 and 0.15 * unit <= w <= 0.65 * unit and 0.15 * unit <= h <= 0.65 * unit:
+            holes.append((x + w / 2, y + h / 2, links[3]))
     return any(
         abs(ax - bx) < 0.25 * unit and 0.2 * unit < by - ay < 1.1 * unit
-        for ax, ay in holes
-        for bx, by in holes
+        and (not same_glyph or a_parent == b_parent)
+        for ax, ay, a_parent in holes
+        for bx, by, b_parent in holes
     )
+
+
+def _has_eight_below(image, x0, x1, lines, limit, bass):
+    """Look for the two holes of a printed downward octave clef."""
+    unit, bottom = (lines[4] - lines[0]) / 4, lines[4]
+    y0, y1 = int(bottom - (1.2 if bass else 0.3) * unit), int(min(bottom + 5 * unit, limit))
+    return _eight_holes(image[y0:y1, max(int(x0), 0) : int(x1)], unit)
+
+
+def _has_eight_above(image, x0, x1, lines):
+    """Read the digit above the treble clef's upper loop."""
+    top = lines[0]
+    unit = (lines[4] - top) / 4
+    y0, y1 = max(0, int(top - 3.4 * unit)), int(top - 1.02 * unit)
+    if y1 <= y0:
+        return False
+    return _eight_holes(image[y0:y1, max(int(x0), 0) : int(x1)], unit, same_glyph=True)
 
 
 def _has_pitch(symbol):
@@ -559,18 +569,18 @@ def _staff_name(symbol):
 
 
 def _mark_octave_clefs(image, staff, symbols, carried):
-    """Renames clefs with an 8 below to clef_.._8vb and lowers the notes they govern.
+    """Attach the source octave to each clef and shift the pitches it governs.
     The first clef of a staff sits at its start; a later one (a clef change) is looked
-    for around where the transformer saw it. `carried` is how the line above ended,
-    {staff name: (lowered, clef sign)}: a line starts as the last one ended, so an 8
-    which is missed there is still known. Returns the same for this line."""
+    for around where the transformer saw it. `carried` holds the shift and sign
+    from the preceding staff."""
     state, started = dict(carried), set()
     for symbol in symbols:
         name = _staff_name(symbol)
         if symbol.rhythm.startswith(("note", "rest")):
             started.add(name)
-            if state.get(name, (False,))[0] and _has_pitch(symbol):
-                symbol.pitch = symbol.pitch[:-1] + str(int(symbol.pitch[-1]) - 1)
+            shift = state.get(name, (0,))[0]
+            if shift and _has_pitch(symbol):
+                symbol.pitch = symbol.pitch[0] + str(int(symbol.pitch[1:]) + shift)
         elif symbol.rhythm.startswith("clef"):
             sign = symbol.rhythm.split("_")[1][0]
             change = name in started and symbol.image_coordinates
@@ -582,11 +592,19 @@ def _mark_octave_clefs(image, staff, symbols, carried):
             unit = (lines[4] - lines[0]) / 4
             x = symbol.image_coordinates[0] if change else point.x + 1.5 * unit
             limit = point.y[5] - unit if k == 0 and len(point.y) > 5 else image.shape[0]
-            found = _has_eight_below(image, x - 2.5 * unit, x + 2.5 * unit, lines, limit, sign == "F")
-            lowered = found or (name not in started and carried.get(name) == (True, sign))
-            state[name] = (lowered, sign)
-            if lowered:
+            left, right = x - 2.5 * unit, x + 2.5 * unit
+            down = _has_eight_below(image, left, right, lines, limit, sign == "F")
+            # At a system start, bar numbers are printed left of the clef.
+            upper_left = left if change else point.x + 1.15 * unit
+            up = sign == "G" and _has_eight_above(image, upper_left, right, lines)
+            shift = int(up) - int(down)
+            if not up and not down and name not in started and carried.get(name) == (-1, sign):
+                shift = -1
+            state[name] = (shift, sign)
+            if shift < 0:
                 symbol.rhythm += "_8vb"
+            elif shift > 0:
+                symbol.rhythm += "_8va"
     return state
 
 
@@ -610,6 +628,8 @@ def _build_clef_with_octave(model_clef, attributes):
     _build_clef(model_clef, attributes)
     if model_clef.rhythm.endswith("_8vb"):
         ET.SubElement(attributes.findall("clef")[-1], "clef-octave-change").text = "-1"
+    elif model_clef.rhythm.endswith("_8va"):
+        ET.SubElement(attributes.findall("clef")[-1], "clef-octave-change").text = "1"
 
 
 def _step(chord):
@@ -932,7 +952,7 @@ def _order_children(score):
 
 
 def _remove_repeat_layout_placeholders(score):
-    """Discard only layout-only records created before a new-system repeatStart.
+    """Fold layout-only records created before a page or system repeatStart.
 
     MusicXML print/attributes belong to the next musical measure. homr can flush
     them into a zero-event measure when repeatStart follows a line break. Carry
@@ -942,14 +962,22 @@ def _remove_repeat_layout_placeholders(score):
     for part in score.findall('part'):
         part_changed = False
         measures = part.findall('measure')
-        for old, following in zip(measures, measures[1:]):
-            if (old.find('print') is None or not len(old)
+        for index, (old, following) in enumerate(zip(measures, measures[1:])):
+            if (not len(old)
                     or any(child.tag not in ('print', 'attributes') for child in old)
                     or old.find('.//measure-style') is not None
                     or following.find('barline/repeat[@direction="forward"]') is None):
                 continue
-            for index, child in enumerate(list(old)):
-                following.insert(index, child)
+            if old.find('print') is None:
+                if (index != 0 or old.find('attributes/divisions') is None
+                        or old.find('attributes/clef') is None or following.find('note') is None):
+                    continue
+                leading = itertools.takewhile(lambda child: child.tag not in ('note', 'forward', 'backup'), following)
+                if not any(child.tag == 'barline'
+                           and child.find('repeat[@direction="forward"]') is not None
+                           and child.find('repeat[@direction="backward"]') is None for child in leading):
+                    continue
+            following[:0] = list(old)
             part.remove(old)
             part_changed = True
             changes.append({'part': part.get('id'), 'number': old.get('number'), 'kind': 'repeat-layout-placeholder'})
