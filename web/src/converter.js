@@ -6,8 +6,8 @@ import { createResourceClient } from './resources.js'
 import { annotate, tokens } from './annotate.js'
 import { prepareMetadata } from './metadata.js'
 
-export const RECOGNIZER_VERSION = 'v13-woodwind-pdf'
-export const SDK_VERSION = 'v14-static-runtime'
+export const RECOGNIZER_VERSION = 'v16-source-grace-slurs'
+export const SDK_VERSION = 'v16-source-grace-slurs'
 
 export function capabilities() {
   const jspi = typeof WebAssembly.Suspending === 'function'

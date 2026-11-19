@@ -1,0 +1,720 @@
+{
+  "schemaVersion": 1,
+  "provenance": "Original source-authored text and MusicXML controls; no private score, OCR truth, or inference outputs. Versioned regression matrix, not a held-out recognition benchmark.",
+  "scope": "Deterministic source-text metadata and XML safety controls, not image-only glyph coverage or whole-score recognition accuracy.",
+  "instrumentCases": [
+    {
+      "id": "soprano-header",
+      "header": "For Soprano Saxophone",
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -1,
+        -2
+      ],
+      "expectedInstrument": "Soprano Saxophone"
+    },
+    {
+      "id": "soprano-part-label",
+      "partLabel": "Soprano Saxophone",
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -1,
+        -2
+      ],
+      "expectedInstrument": "Soprano Saxophone"
+    },
+    {
+      "id": "soprano-fragmented-header",
+      "headerTokens": [
+        "For",
+        "the",
+        "Soprano",
+        "Saxophone"
+      ],
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -1,
+        -2
+      ],
+      "expectedInstrument": "Soprano Saxophone"
+    },
+    {
+      "id": "soprano-matching-xml-name",
+      "header": "For Soprano Saxophone",
+      "name": "Soprano Sax",
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -1,
+        -2
+      ],
+      "expectedInstrument": "Soprano Saxophone"
+    },
+    {
+      "id": "soprano-explicit-0",
+      "header": "For Soprano Saxophone",
+      "explicitTranspose": [
+        0,
+        0
+      ],
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-transpose"
+    },
+    {
+      "id": "soprano-explicit--2",
+      "header": "For Soprano Saxophone",
+      "explicitTranspose": [
+        -1,
+        -2
+      ],
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-transpose"
+    },
+    {
+      "id": "soprano-xml-concert",
+      "header": "For Soprano Saxophone",
+      "concertXml": true,
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-concert-score-xml"
+    },
+    {
+      "id": "soprano-text-concert",
+      "header": "For Soprano Saxophone",
+      "extraHeader": "Concert Pitch",
+      "expectedStatus": "unknown",
+      "expectedReason": "explicit-concert-score"
+    },
+    {
+      "id": "soprano-for-part",
+      "header": "For Soprano Saxophone",
+      "forPart": true,
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-for-part"
+    },
+    {
+      "id": "soprano-multipart",
+      "header": "For Soprano Saxophone",
+      "parts": 2,
+      "expectedStatus": "unknown",
+      "expectedReason": "no-unique-part"
+    },
+    {
+      "id": "soprano-source-piano",
+      "header": "For Soprano Saxophone and Piano",
+      "expectedStatus": "unknown",
+      "expectedReason": "multiple-source-instruments"
+    },
+    {
+      "id": "alto-header",
+      "header": "For Alto Saxophone",
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -5,
+        -9
+      ],
+      "expectedInstrument": "Alto Saxophone"
+    },
+    {
+      "id": "alto-part-label",
+      "partLabel": "Alto Saxophone",
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -5,
+        -9
+      ],
+      "expectedInstrument": "Alto Saxophone"
+    },
+    {
+      "id": "alto-fragmented-header",
+      "headerTokens": [
+        "For",
+        "the",
+        "Alto",
+        "Saxophone"
+      ],
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -5,
+        -9
+      ],
+      "expectedInstrument": "Alto Saxophone"
+    },
+    {
+      "id": "alto-matching-xml-name",
+      "header": "For Alto Saxophone",
+      "name": "Alto Sax",
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -5,
+        -9
+      ],
+      "expectedInstrument": "Alto Saxophone"
+    },
+    {
+      "id": "alto-explicit-0",
+      "header": "For Alto Saxophone",
+      "explicitTranspose": [
+        0,
+        0
+      ],
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-transpose"
+    },
+    {
+      "id": "alto-explicit--9",
+      "header": "For Alto Saxophone",
+      "explicitTranspose": [
+        -5,
+        -9
+      ],
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-transpose"
+    },
+    {
+      "id": "alto-xml-concert",
+      "header": "For Alto Saxophone",
+      "concertXml": true,
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-concert-score-xml"
+    },
+    {
+      "id": "alto-text-concert",
+      "header": "For Alto Saxophone",
+      "extraHeader": "Concert Pitch",
+      "expectedStatus": "unknown",
+      "expectedReason": "explicit-concert-score"
+    },
+    {
+      "id": "alto-for-part",
+      "header": "For Alto Saxophone",
+      "forPart": true,
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-for-part"
+    },
+    {
+      "id": "alto-multipart",
+      "header": "For Alto Saxophone",
+      "parts": 2,
+      "expectedStatus": "unknown",
+      "expectedReason": "no-unique-part"
+    },
+    {
+      "id": "alto-source-piano",
+      "header": "For Alto Saxophone and Piano",
+      "expectedStatus": "unknown",
+      "expectedReason": "multiple-source-instruments"
+    },
+    {
+      "id": "tenor-header",
+      "header": "For Tenor Saxophone",
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -8,
+        -14
+      ],
+      "expectedInstrument": "Tenor Saxophone"
+    },
+    {
+      "id": "tenor-part-label",
+      "partLabel": "Tenor Saxophone",
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -8,
+        -14
+      ],
+      "expectedInstrument": "Tenor Saxophone"
+    },
+    {
+      "id": "tenor-fragmented-header",
+      "headerTokens": [
+        "For",
+        "the",
+        "Tenor",
+        "Saxophone"
+      ],
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -8,
+        -14
+      ],
+      "expectedInstrument": "Tenor Saxophone"
+    },
+    {
+      "id": "tenor-matching-xml-name",
+      "header": "For Tenor Saxophone",
+      "name": "Tenor Sax",
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -8,
+        -14
+      ],
+      "expectedInstrument": "Tenor Saxophone"
+    },
+    {
+      "id": "tenor-explicit-0",
+      "header": "For Tenor Saxophone",
+      "explicitTranspose": [
+        0,
+        0
+      ],
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-transpose"
+    },
+    {
+      "id": "tenor-explicit--14",
+      "header": "For Tenor Saxophone",
+      "explicitTranspose": [
+        -8,
+        -14
+      ],
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-transpose"
+    },
+    {
+      "id": "tenor-xml-concert",
+      "header": "For Tenor Saxophone",
+      "concertXml": true,
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-concert-score-xml"
+    },
+    {
+      "id": "tenor-text-concert",
+      "header": "For Tenor Saxophone",
+      "extraHeader": "Concert Pitch",
+      "expectedStatus": "unknown",
+      "expectedReason": "explicit-concert-score"
+    },
+    {
+      "id": "tenor-for-part",
+      "header": "For Tenor Saxophone",
+      "forPart": true,
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-for-part"
+    },
+    {
+      "id": "tenor-multipart",
+      "header": "For Tenor Saxophone",
+      "parts": 2,
+      "expectedStatus": "unknown",
+      "expectedReason": "no-unique-part"
+    },
+    {
+      "id": "tenor-source-piano",
+      "header": "For Tenor Saxophone and Piano",
+      "expectedStatus": "unknown",
+      "expectedReason": "multiple-source-instruments"
+    },
+    {
+      "id": "baritone-header",
+      "header": "For Baritone Saxophone",
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -12,
+        -21
+      ],
+      "expectedInstrument": "Baritone Saxophone"
+    },
+    {
+      "id": "baritone-part-label",
+      "partLabel": "Baritone Saxophone",
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -12,
+        -21
+      ],
+      "expectedInstrument": "Baritone Saxophone"
+    },
+    {
+      "id": "baritone-fragmented-header",
+      "headerTokens": [
+        "For",
+        "the",
+        "Baritone",
+        "Saxophone"
+      ],
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -12,
+        -21
+      ],
+      "expectedInstrument": "Baritone Saxophone"
+    },
+    {
+      "id": "baritone-matching-xml-name",
+      "header": "For Baritone Saxophone",
+      "name": "Baritone Sax",
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -12,
+        -21
+      ],
+      "expectedInstrument": "Baritone Saxophone"
+    },
+    {
+      "id": "baritone-explicit-0",
+      "header": "For Baritone Saxophone",
+      "explicitTranspose": [
+        0,
+        0
+      ],
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-transpose"
+    },
+    {
+      "id": "baritone-explicit--21",
+      "header": "For Baritone Saxophone",
+      "explicitTranspose": [
+        -12,
+        -21
+      ],
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-transpose"
+    },
+    {
+      "id": "baritone-xml-concert",
+      "header": "For Baritone Saxophone",
+      "concertXml": true,
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-concert-score-xml"
+    },
+    {
+      "id": "baritone-text-concert",
+      "header": "For Baritone Saxophone",
+      "extraHeader": "Concert Pitch",
+      "expectedStatus": "unknown",
+      "expectedReason": "explicit-concert-score"
+    },
+    {
+      "id": "baritone-for-part",
+      "header": "For Baritone Saxophone",
+      "forPart": true,
+      "expectedStatus": "preserved",
+      "expectedReason": "explicit-for-part"
+    },
+    {
+      "id": "baritone-multipart",
+      "header": "For Baritone Saxophone",
+      "parts": 2,
+      "expectedStatus": "unknown",
+      "expectedReason": "no-unique-part"
+    },
+    {
+      "id": "baritone-source-piano",
+      "header": "For Baritone Saxophone and Piano",
+      "expectedStatus": "unknown",
+      "expectedReason": "multiple-source-instruments"
+    },
+    {
+      "id": "unsupported-flute",
+      "header": "For Flute",
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "unsupported-oboe",
+      "header": "For Oboe",
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "unsupported-bassoon",
+      "header": "For Bassoon",
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "unsupported-piccolo",
+      "header": "For Piccolo",
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "unsupported-b-flat-clarinet",
+      "header": "For B-flat Clarinet",
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "unsupported-clarinet-in-a",
+      "header": "For Clarinet in A",
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "unsupported-clarinet",
+      "header": "For Clarinet",
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "unsupported-saxophone",
+      "header": "For Saxophone",
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "no-source",
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "conflicting-xml-name",
+      "header": "For Tenor Saxophone",
+      "name": "Alto Saxophone",
+      "expectedStatus": "unknown",
+      "expectedReason": "conflicting-instrument-name"
+    },
+    {
+      "id": "two-instrument-records",
+      "header": "For Tenor Saxophone",
+      "instrumentNames": [
+        "Voice",
+        "Music"
+      ],
+      "expectedStatus": "unknown",
+      "expectedReason": "no-unique-instrument-record"
+    },
+    {
+      "id": "existing-record-id",
+      "header": "For Tenor Saxophone",
+      "instrumentNames": [
+        "Voice"
+      ],
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -8,
+        -14
+      ],
+      "expectedInstrument": "Tenor Saxophone"
+    },
+    {
+      "id": "multiple-source-slash",
+      "header": "For Alto Saxophone / Tenor Saxophone",
+      "expectedStatus": "unknown",
+      "expectedReason": "multiple-source-instruments"
+    },
+    {
+      "id": "multiple-source-with",
+      "header": "For Baritone Saxophone with Band",
+      "expectedStatus": "unknown",
+      "expectedReason": "multiple-source-instruments"
+    },
+    {
+      "id": "quartet-source",
+      "header": "For Soprano Saxophone Quartet",
+      "expectedStatus": "unknown",
+      "expectedReason": "multiple-source-instruments"
+    },
+    {
+      "id": "conflicting-pages",
+      "pages": [
+        "For Alto Saxophone",
+        "For Tenor Saxophone"
+      ],
+      "expectedStatus": "unknown",
+      "expectedReason": "conflicting-source-instruments"
+    },
+    {
+      "id": "same-source-pages",
+      "pages": [
+        "For Tenor Saxophone",
+        "For Tenor Saxophone"
+      ],
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -8,
+        -14
+      ],
+      "expectedInstrument": "Tenor Saxophone"
+    },
+    {
+      "id": "lower-case-header",
+      "header": "for the baritone saxophone",
+      "expectedStatus": "applied",
+      "expectedTranspose": [
+        -12,
+        -21
+      ],
+      "expectedInstrument": "Baritone Saxophone"
+    },
+    {
+      "id": "unbound-title-name",
+      "header": "Tenor Saxophone Studies",
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "instrument-words-below-staff",
+      "header": "For Alto Saxophone",
+      "headerY": 350,
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "comma-separated-piano",
+      "header": "For Alto Saxophone, Piano",
+      "expectedStatus": "unknown",
+      "expectedReason": "multiple-source-instruments"
+    },
+    {
+      "id": "unsupported-instrument-on-next-page",
+      "pages": [
+        "For Alto Saxophone",
+        "For Clarinet"
+      ],
+      "expectedStatus": "unknown",
+      "expectedReason": "multiple-source-instruments"
+    },
+    {
+      "id": "native-xml-flute",
+      "header": "For Flute",
+      "name": "Flute",
+      "explicitTranspose": [
+        0,
+        0
+      ],
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "native-xml-oboe",
+      "header": "For Oboe",
+      "name": "Oboe",
+      "explicitTranspose": [
+        0,
+        0
+      ],
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "native-xml-bassoon",
+      "header": "For Bassoon",
+      "name": "Bassoon",
+      "explicitTranspose": [
+        0,
+        0
+      ],
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "native-xml-piccolo",
+      "header": "For Piccolo",
+      "name": "Piccolo",
+      "explicitTranspose": [
+        7,
+        12
+      ],
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "native-xml-b-flat-clarinet",
+      "header": "For B-flat Clarinet",
+      "name": "B-flat Clarinet",
+      "explicitTranspose": [
+        -1,
+        -2
+      ],
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    },
+    {
+      "id": "native-xml-clarinet-in-a",
+      "header": "For Clarinet in A",
+      "name": "Clarinet in A",
+      "explicitTranspose": [
+        -2,
+        -3
+      ],
+      "expectedStatus": "unknown",
+      "expectedReason": "no-explicit-saxophone-source"
+    }
+  ],
+  "tempoCases": [
+    {
+      "unit": "whole",
+      "bpm": 61,
+      "dotted": false,
+      "quarterBpm": 244
+    },
+    {
+      "unit": "whole",
+      "bpm": 61,
+      "dotted": true,
+      "quarterBpm": 366.0
+    },
+    {
+      "unit": "half",
+      "bpm": 61,
+      "dotted": false,
+      "quarterBpm": 122
+    },
+    {
+      "unit": "half",
+      "bpm": 61,
+      "dotted": true,
+      "quarterBpm": 183.0
+    },
+    {
+      "unit": "quarter",
+      "bpm": 61,
+      "dotted": false,
+      "quarterBpm": 61
+    },
+    {
+      "unit": "quarter",
+      "bpm": 61,
+      "dotted": true,
+      "quarterBpm": 91.5
+    },
+    {
+      "unit": "eighth",
+      "bpm": 61,
+      "dotted": false,
+      "quarterBpm": 30.5
+    },
+    {
+      "unit": "eighth",
+      "bpm": 61,
+      "dotted": true,
+      "quarterBpm": 45.75
+    },
+    {
+      "unit": "16th",
+      "bpm": 61,
+      "dotted": false,
+      "quarterBpm": 15.25
+    },
+    {
+      "unit": "16th",
+      "bpm": 61,
+      "dotted": true,
+      "quarterBpm": 22.875
+    },
+    {
+      "unit": "32nd",
+      "bpm": 61,
+      "dotted": false,
+      "quarterBpm": 7.625
+    },
+    {
+      "unit": "32nd",
+      "bpm": 61,
+      "dotted": true,
+      "quarterBpm": 11.4375
+    },
+    {
+      "unit": "64th",
+      "bpm": 61,
+      "dotted": false,
+      "quarterBpm": 3.8125
+    },
+    {
+      "unit": "64th",
+      "bpm": 61,
+      "dotted": true,
+      "quarterBpm": 5.71875
+    }
+  ]
+}
