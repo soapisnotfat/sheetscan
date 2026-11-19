@@ -66,7 +66,7 @@ try {
     if (!worker || files[worker] !== expected.browser[frozenWorker]) throw new Error('Recognition worker changed from frozen candidate')
   }
   await writeFile(join(out, 'public-build.json'), JSON.stringify({
-    kind: sdk ? 'browser-sdk' : 'browser-app', sdkVersion: 'v15-notation-metadata', recognizerVersion: 'v15-notation-metadata',
+    kind: sdk ? 'browser-sdk' : 'browser-app', sdkVersion: 'v16-source-grace-slurs', recognizerVersion: 'v16-source-grace-slurs',
     sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
     stagedPublicAllowlist: [...tracked, ...runtime, 'runtime-lock.json', 'runtime-notices.txt', ...runtimeLock.assets.map(asset => 'runtime/' + asset.path)], trackedNotices: notices, files,
   }, null, 2)+'\n')

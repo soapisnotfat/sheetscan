@@ -17,6 +17,7 @@ import numpy as np
 from score_numbers import read_meters, rest_number_box, read_forward_repeats, read_multirest_regions
 from printed_tuplets import read_tuplet_marks, tuplet_candidates, apply_tuplet
 from accidental_glyphs import read_accidentals
+from source_curves import read_grace_slur
 from staff_coverage import choose_staff_region
 import source_rhythm
 
@@ -734,6 +735,59 @@ def _staff_boxes(rows, to_input):
     return boxes
 
 
+def _generate_xml_with_source_curves(voices, image, boxes, stable_heads):
+    """Keep a decoded grace slur when the source supports its outer endpoints."""
+    head_lookup = {}
+    for x, y in stable_heads:
+        head_lookup.setdefault((round(x), round(y)), []).append((x, y))
+    original_tie_event = music_xml_generator.tie_event
+    changes = []
+
+    def anchored_point(note):
+        match = re.search(r'-p(\d+)-(\d+)-(\d+)$', note.get('id', ''))
+        if match:
+            page, x, y = map(int, match.groups())
+            points = head_lookup.get((x, y), [])
+            if page == _page and len(points) == 1:
+                return points[0]
+        return None
+
+    def grace_slur(start, stop):
+        if start.find('grace') is None or stop.find('grace') is not None:
+            return None
+        pitch = music_xml_generator.get_note_pitch(start)
+        if (pitch is None or pitch != music_xml_generator.get_note_pitch(stop)
+                or not music_xml_generator.get_slur(start, 'start')
+                or not music_xml_generator.get_slur(stop, 'stop')):
+            return None
+        a, b = anchored_point(start), anchored_point(stop)
+        if a is None or b is None:
+            return None
+        units = []
+        for left, top, right, bottom, _ in boxes:
+            unit = (bottom - top) / 4
+            if (left <= a[0] < b[0] <= right
+                    and top - 2 * unit <= min(a[1], b[1]) <= max(a[1], b[1]) <= bottom + 2 * unit):
+                units.append(unit)
+        return read_grace_slur(image, a, b, units[0]) if len(units) == 1 else None
+
+    def tie_event(before, after):
+        if len(before) == len(after) == 1:
+            start, stop = before[0], after[0]
+            evidence = grace_slur(start, stop)
+            if evidence is not None:
+                changes.append(dict(start=start.get('id'), stop=stop.get('id'), **evidence))
+                return
+        original_tie_event(before, after)
+
+    music_xml_generator.tie_event = tie_event
+    try:
+        xml = music_xml_generator.generate_xml(XmlGeneratorArguments(False, None, None), voices, "")
+    finally:
+        music_xml_generator.tie_event = original_tie_event
+    return xml, changes
+
+
 def _read_page(path):
     """One page image -> (MusicXML <score-partwise> element, staff boxes)."""
     global _line_above, _rest_records, _coordinate_audit, _raw_heads, _coverage_context, _coverage_audit, _source_rhythm_context
@@ -749,13 +803,14 @@ def _read_page(path):
         if str(error) in ("No staffs found", "No noteheads or clefs found"):
             raise NonMusicPage(str(error)) from error
         raise
+    original = cv2.imread(path)
     try:
         rows = _split_unjoined_systems(image, repair_systems(debug, rows))
         if not _has_printed_staff(image, rows):
             raise NonMusicPage("No supported five-line music staff found")
         _coverage_context = (image, [staff for row in rows for staff in row.staffs])
         if _source_rhythm_enabled:
-            source_context = source_rhythm.prepare_context(cv2.imread(path), rows, _raw_heads, to_input, _page)
+            source_context = source_rhythm.prepare_context(original, rows, _raw_heads, to_input, _page)
             _source_rhythm_context = source_context
         voices = staff_parsing.parse_staffs(debug, rows, image, config=_TRANSFORMER)
     finally:
@@ -771,11 +826,10 @@ def _read_page(path):
             for key in ('attention', 'head'):
                 if note[key] is not None:
                     note[key] = [round(float(v), 2) for v in to_input(note[key])]
-    xml = music_xml_generator.generate_xml(XmlGeneratorArguments(False, None, None), voices, "")
-    layout_changes = _remove_repeat_layout_placeholders(xml)
     boxes = _staff_boxes(rows, to_input)
-    original = cv2.imread(path)
     stable = [note['head'] for record in _coordinate_audit for note in record['notes']]
+    xml, grace_slurs = _generate_xml_with_source_curves(voices, original, boxes, stable)
+    layout_changes = _remove_repeat_layout_placeholders(xml)
     note_points = []
     for note in xml.findall('.//note'):
         at = re.search(r'-p(\d+)-(\d+)-(\d+)$', note.get('id', ''))
@@ -838,6 +892,7 @@ def _read_page(path):
                           'accidentals': accidentals,
                           'layoutChanges': layout_changes,
                           'coordinateChanges': _coordinate_audit,
+                          'graceSlurChanges': grace_slurs,
                           'staffCoverageChanges': _coverage_audit,
                           'sourceRhythmChanges': source_context['changes'] if source_context else [],
                           'sourceRhythmDiagnostics': source_context['diagnostics'] if source_context else [],
@@ -1071,6 +1126,7 @@ def scan(paths, progress=lambda done, total: None, number_reader=None, printed_t
     numeric_audit['sourceRhythmChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('sourceRhythmChanges', [])]
     numeric_audit['sourceRhythmDiagnostics'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('sourceRhythmDiagnostics', [])]
     numeric_audit['coordinateChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('coordinateChanges', [])]
+    numeric_audit['graceSlurChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source['graceSlurChanges']]
     numeric_audit['staffCoverageChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('staffCoverageChanges', [])]
     numeric_audit['repeatLocationChanges'] = _repair_forward_repeat_locations(merged)
     numeric_audit['printedRepeatChanges'] = _repair_printed_forward_repeats(merged, _page_sources)

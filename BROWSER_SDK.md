@@ -15,6 +15,8 @@ Natural cancellation uses an intact source glyph bound to an unambiguous segment
 
 The fork is AGPL-3.0; glyph artifacts retain their OFL notices. The package includes `LICENSE`, exact source links in `SOURCE.txt`, and the tracked font licenses/manifests under `licenses/`.
 
+The `v16-source-grace-slurs` SDK checks a decoded same-pitch grace-to-principal curve against the original page before the exporter classifies it as a tie. A clearly separated arc anchored to both noteheads preserves the slur. Both anchors must come from an unambiguous source-note match. The normal tie rule handles pairs with unsupported or ambiguous geometry. `result.audit.graceSlurChanges` identifies each retained slur by its note IDs, page, and source box. The 111 cropped controls in `bench/fixtures/grace-curves.*` include printed ties and absent curves.
+
 Host the **whole** SDK directory under the app's origin, preserving `assets/` and `models/`. Recognition workers are module workers. Runtime dependencies download from pinned public CDNs; input scores are processed locally and are not uploaded.
 
 ```js
