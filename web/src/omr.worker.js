@@ -15,6 +15,7 @@ import staffCoverage from './py/staff_coverage.py?raw'
 import sourceRhythm from './py/source_rhythm.py?raw'
 import sourceCurves from './py/source_curves.py?raw'
 import beamEvidence from './py/beam_evidence.py?raw'
+import sourceBeams from './py/source_beams.py?raw'
 import printedTuplets from './py/printed_tuplets.py?raw'
 import tupletTemplates from './py/tuplet_templates.json?raw'
 import tupletGlyphs from './py/tuplet_glyphs.py?raw'
@@ -82,6 +83,7 @@ function init(port, modelBase) {
     pyodide.FS.writeFile('/lib/python3.14/site-packages/source_rhythm.py', sourceRhythm)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/source_curves.py', sourceCurves)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/beam_evidence.py', beamEvidence)
+    pyodide.FS.writeFile('/lib/python3.14/site-packages/source_beams.py', sourceBeams)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/printed_tuplets.py', printedTuplets)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/tuplet_templates.json', tupletTemplates)
     pyodide.FS.writeFile('/lib/python3.14/site-packages/tuplet_glyphs.py', tupletGlyphs)

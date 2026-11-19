@@ -17,6 +17,8 @@ import numpy as np
 from score_numbers import read_meters, rest_number_box, read_forward_repeats, read_multirest_regions
 from printed_tuplets import read_tuplet_marks, tuplet_candidates, apply_tuplet
 from accidental_glyphs import read_accidentals
+from beam_evidence import read_beam_groups
+from source_beams import apply_source_beams
 from source_curves import read_grace_slur
 from staff_coverage import choose_staff_region
 import source_rhythm
@@ -830,6 +832,13 @@ def _read_page(path):
     stable = [note['head'] for record in _coordinate_audit for note in record['notes']]
     xml, grace_slurs = _generate_xml_with_source_curves(voices, original, boxes, stable)
     layout_changes = _remove_repeat_layout_placeholders(xml)
+    gray = cv2.cvtColor(original, cv2.COLOR_BGR2GRAY)
+    if source_context is None:
+        beam_boxes, _, _, beam_grids, beam_heads = source_rhythm.source_geometry(rows, _raw_heads, to_input)
+        beam_groups = read_beam_groups(gray, beam_grids, beam_heads)
+    else:
+        beam_boxes, beam_groups = source_context['boxes'], source_context['beams']
+    beam_changes = apply_source_beams(xml, _page, beam_groups, beam_boxes, gray < 160)
     note_points = []
     for note in xml.findall('.//note'):
         at = re.search(r'-p(\d+)-(\d+)-(\d+)$', note.get('id', ''))
@@ -886,6 +895,7 @@ def _read_page(path):
                 rest_changes.append(repair_rest_count(xml, source['sourceId'], reading['value']))
                 source['count'] = reading['value']
     _page_sources.append({'page': _page, 'score': xml, 'layout': boxes, 'meters': meters,
+                          'sourceBeamChanges': beam_changes,
                           'tuplets': read_tuplet_marks(original, boxes),
                           'forwardRepeats': read_forward_repeats(original, boxes),
                           'noteheads': heads,
@@ -1127,6 +1137,7 @@ def scan(paths, progress=lambda done, total: None, number_reader=None, printed_t
     numeric_audit['sourceRhythmDiagnostics'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('sourceRhythmDiagnostics', [])]
     numeric_audit['coordinateChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('coordinateChanges', [])]
     numeric_audit['graceSlurChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source['graceSlurChanges']]
+    numeric_audit['sourceBeamChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source['sourceBeamChanges']]
     numeric_audit['staffCoverageChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('staffCoverageChanges', [])]
     numeric_audit['repeatLocationChanges'] = _repair_forward_repeat_locations(merged)
     numeric_audit['printedRepeatChanges'] = _repair_printed_forward_repeats(merged, _page_sources)
