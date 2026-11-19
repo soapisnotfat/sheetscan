@@ -96,8 +96,10 @@ export function tempoMark(doc, { bpm, unit = 'quarter', dotted = false, words })
     const metronome = direction.appendChild(el('direction-type')).appendChild(el('metronome'))
     metronome.append(el('beat-unit', unit), ...(dotted ? [el('beat-unit-dot')] : []), el('per-minute', bpm))
   }
-  const sound = direction.appendChild(el('sound'))
-  sound.setAttribute('tempo', Math.round(bpm * BEATS[unit] * (dotted ? 1.5 : 1)))
+  if (bpm > 0) {
+    const sound = direction.appendChild(el('sound'))
+    sound.setAttribute('tempo', Math.round(bpm * BEATS[unit] * (dotted ? 1.5 : 1)))
+  }
   return direction
 }
 

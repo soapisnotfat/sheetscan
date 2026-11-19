@@ -1,0 +1,102 @@
+{
+  "recognizerBase": "007577e",
+  "change": "Remove impossible large components before bridging numeric fragments; no classifier or policy change",
+  "fullBrowserPiano": {
+    "before": {
+      "correct": 365,
+      "truth": 375,
+      "predicted": 375
+    },
+    "after": {
+      "correct": 375,
+      "truth": 375,
+      "predicted": 375
+    },
+    "samePdfSha256": "ebe47e66c54bc2fedef8bf4ab386e701c3b0b78eb17e64cb3051730426ecb5f7",
+    "sameRasterHashes": [
+      "5876418aaa8efcba2c381d27fd796df2c84a09b17686050ee64b2af62dc38a45",
+      "6bc99b51313a55a082db4db025a18bc178a276d5db8f77585009d6053a9e69c1"
+    ],
+    "qualificationAfter": true
+  },
+  "freshSyntheticStress": {
+    "scope": "fresh synthetic glyph+staff+beam extraction stress; not independent full-score quality",
+    "frozenClassifierSha256": "de92fb01f4ae749d7f9a675f1fd2228427cddb643b3f61ca96531ca40bf093b5",
+    "beforeSourceSha256": "c4bab96f96823716d452d36ba21c2ec6f7da4f0d700de7b8d790d897206c65e3",
+    "afterSourceSha256": "31fc2d7a406e9da8b5d0bdf24b7f860becadd57fd24e128fada3c67253788b04",
+    "fontSha256": {
+      "Bravura": "cdf0f893ee1fdb64b7f6713d71ee0dcfc349c0ac01429a8e451b01a9e79f5f3b",
+      "Leipzig": "ee0457af412610b58f7f47ebc7584e6a15fd1f752c399597e063a550959d0b31",
+      "Leland": "293788a40584b1908e3a0f219833f6a13e9a1aaf671e08fd26ad18fad2631b35",
+      "Eugene": "2f969fe9788592a712be35e53783cd9443eef70a3c93174fb1d11f99ed146b92"
+    },
+    "groups": {
+      "Bravura": {
+        "before": {
+          "positiveCorrect": 18,
+          "positiveTotal": 54,
+          "negativeRejected": 54,
+          "negativeTotal": 54,
+          "falseDetections": 15
+        },
+        "after": {
+          "positiveCorrect": 54,
+          "positiveTotal": 54,
+          "negativeRejected": 54,
+          "negativeTotal": 54,
+          "falseDetections": 15
+        }
+      },
+      "Leipzig": {
+        "before": {
+          "positiveCorrect": 17,
+          "positiveTotal": 54,
+          "negativeRejected": 54,
+          "negativeTotal": 54,
+          "falseDetections": 15
+        },
+        "after": {
+          "positiveCorrect": 53,
+          "positiveTotal": 54,
+          "negativeRejected": 54,
+          "negativeTotal": 54,
+          "falseDetections": 15
+        }
+      },
+      "Leland": {
+        "before": {
+          "positiveCorrect": 18,
+          "positiveTotal": 54,
+          "negativeRejected": 54,
+          "negativeTotal": 54,
+          "falseDetections": 0
+        },
+        "after": {
+          "positiveCorrect": 54,
+          "positiveTotal": 54,
+          "negativeRejected": 54,
+          "negativeTotal": 54,
+          "falseDetections": 0
+        }
+      },
+      "Eugene": {
+        "before": {
+          "positiveCorrect": 6,
+          "positiveTotal": 54,
+          "negativeRejected": 54,
+          "negativeTotal": 54,
+          "falseDetections": 0
+        },
+        "after": {
+          "positiveCorrect": 18,
+          "positiveTotal": 54,
+          "negativeRejected": 54,
+          "negativeTotal": 54,
+          "falseDetections": 0
+        }
+      }
+    },
+    "extraDetectionsUnchanged": 30,
+    "note": "216/216 negative frames rejected is not zero false-positive evidence: 30 extra detections on positive frames remain in both versions. Eugene2/3 remain rejected; this is not a full-score or all-font accuracy claim."
+  }
+}

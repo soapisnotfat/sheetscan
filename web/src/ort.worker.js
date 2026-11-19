@@ -5,6 +5,7 @@
 // The page starts both workers and hands each one end of a message channel (WebKit
 // refuses a worker started from inside a worker on a cross-origin isolated page).
 import { load, names, run } from './ort.js'
+import { configureResources, installResourceFetch } from './resources.js'
 
 let flag // Int32Array [done, length of the JSON header]
 let bytes // Uint8Array: the header at 0, tensor data from DATA on
@@ -25,10 +26,12 @@ async function handle(data, port) {
     flag = new Int32Array(data.shared, 0, 2)
     bytes = new Uint8Array(data.shared, 8)
     try {
-      await load(data.base, (done, total) => port.postMessage({ done, total }))
+      configureResources(data.base, { onProgress: event => port.postMessage(event) })
+      installResourceFetch()
+      await load(data.base, () => {}, data.modelBase)
       port.postMessage({ loaded: true })
     } catch (e) {
-      port.postMessage({ failed: String(e?.message ?? e) })
+      port.postMessage({ failed: String(e?.message ?? e), code: e?.code, resourceURL: e?.resourceURL, attempts: e?.attempts })
     }
     return
   }

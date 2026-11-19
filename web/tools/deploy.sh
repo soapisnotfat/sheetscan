@@ -2,9 +2,9 @@
 # Build the app and publish web/dist as the gh-pages branch of origin.
 set -e
 cd "$(dirname "$0")/.."
-npx vite build
+npm run build:public
 remote=$(git remote get-url origin)
-cd dist
+cd dist-public
 touch .nojekyll
 git init -q -b gh-pages
 git add -A

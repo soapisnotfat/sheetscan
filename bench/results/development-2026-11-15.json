@@ -1,0 +1,401 @@
+{
+  "date": "2026-11-15",
+  "status": "development_only_not_product_qualified",
+  "target": {
+    "jointEventPrecision": 0.995,
+    "jointEventRecall": 0.995,
+    "aspirational": 0.999,
+    "requiresRepresentativeHeldOutWholeScores": true
+  },
+  "scope": "Public development cases only. Not an accuracy estimate for the private library or arbitrary PDFs. Native excludes PDF.js/text annotation.",
+  "engine": {
+    "homr": "0.7.1",
+    "browser": "Chrome 157.0.8103.78",
+    "browserBridge": "JSPI",
+    "modelWeightsRetrained": false
+  },
+  "challenge": {
+    "origin": "self-authored CC0",
+    "measures": 21,
+    "nonGraceEvents": 50,
+    "graces": 1,
+    "printedTempoMarks": 2,
+    "truthSha256": "17cc79a49afe153f3df115e3359e388f065b3c821ad4a9884b998e9a5fa464d6",
+    "pdfSha256": "efd763c8a9fd35eac61fd8865f7b8637956f0b301e64cdc8170fff6862cb516f"
+  },
+  "reports": {
+    "public_bach_native": {
+      "scope": "strict written notation at original part/bar/voice/onset; no bar alignment",
+      "events": {
+        "truth": 165,
+        "reading": 165,
+        "correct": 165,
+        "missing": 0,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "attackPitchDiagnostic": {
+        "truth": 163,
+        "reading": 163,
+        "correct": 163,
+        "missing": 0,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "rests": {
+        "truth": 0,
+        "reading": 0,
+        "correct": 0,
+        "missing": 0,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "graces": {
+        "truth": 0,
+        "reading": 0,
+        "correct": 0,
+        "missing": 0,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "truthMeasuresByPart": [
+        10,
+        10,
+        10,
+        10
+      ],
+      "readingMeasuresByPart": [
+        10,
+        10,
+        10,
+        10
+      ],
+      "structureMatches": true,
+      "meterMatches": true,
+      "truthHasTempo": false,
+      "tempoMatches": true,
+      "unobservableInPdf": {
+        "truthHiddenEvents": 4,
+        "readingHiddenEvents": 0,
+        "truthPlaybackOnlyTempos": 4,
+        "readingPlaybackOnlyTempos": 0
+      },
+      "exactBars": 40,
+      "totalBars": 40,
+      "barErrors": [],
+      "gate": {
+        "threshold": 0.995,
+        "passed": true
+      }
+    },
+    "challenge_initial_native": {
+      "scope": "strict written notation at original part/bar/voice/onset; no bar alignment",
+      "events": {
+        "truth": 50,
+        "reading": 49,
+        "correct": 29,
+        "missing": 21,
+        "extra": 20,
+        "precision": 0.5918367346938775,
+        "recall": 0.58,
+        "f1": 0.5858585858585859
+      },
+      "attackPitchDiagnostic": {
+        "truth": 37,
+        "reading": 37,
+        "correct": 19,
+        "missing": 18,
+        "extra": 18,
+        "precision": 0.5135135135135135,
+        "recall": 0.5135135135135135,
+        "f1": 0.5135135135135135
+      },
+      "rests": {
+        "truth": 12,
+        "reading": 11,
+        "correct": 11,
+        "missing": 1,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 0.9166666666666666,
+        "f1": 0.9565217391304348
+      },
+      "graces": {
+        "truth": 1,
+        "reading": 1,
+        "correct": 1,
+        "missing": 0,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "truthMeasuresByPart": [
+        21
+      ],
+      "readingMeasuresByPart": [
+        20
+      ],
+      "structureMatches": false,
+      "meterMatches": false,
+      "formMatches": false,
+      "truthHasTempo": true,
+      "tempoMatches": false,
+      "unobservableInPdf": {
+        "truthHiddenEvents": 0,
+        "readingHiddenEvents": 0,
+        "truthPlaybackOnlyTempos": 0,
+        "readingPlaybackOnlyTempos": 0
+      },
+      "exactBars": 15,
+      "totalBars": 21,
+      "barErrors": [
+        {
+          "partIndex": 1,
+          "measureIndex": 2,
+          "events": {
+            "truth": 5,
+            "reading": 5,
+            "correct": 1,
+            "missing": 4,
+            "extra": 4,
+            "precision": 0.2,
+            "recall": 0.2,
+            "f1": 0.2
+          },
+          "meterMatches": true
+        },
+        {
+          "partIndex": 1,
+          "measureIndex": 17,
+          "events": {
+            "truth": 1,
+            "reading": 6,
+            "correct": 0,
+            "missing": 1,
+            "extra": 6,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0
+          },
+          "meterMatches": false
+        },
+        {
+          "partIndex": 1,
+          "measureIndex": 18,
+          "events": {
+            "truth": 6,
+            "reading": 5,
+            "correct": 0,
+            "missing": 6,
+            "extra": 5,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0
+          },
+          "meterMatches": false
+        },
+        {
+          "partIndex": 1,
+          "measureIndex": 19,
+          "events": {
+            "truth": 5,
+            "reading": 4,
+            "correct": 0,
+            "missing": 5,
+            "extra": 4,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0
+          },
+          "meterMatches": false
+        },
+        {
+          "partIndex": 1,
+          "measureIndex": 20,
+          "events": {
+            "truth": 4,
+            "reading": 1,
+            "correct": 0,
+            "missing": 4,
+            "extra": 1,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0
+          },
+          "meterMatches": true
+        },
+        {
+          "partIndex": 1,
+          "measureIndex": 21,
+          "events": {
+            "truth": 1,
+            "reading": 0,
+            "correct": 0,
+            "missing": 1,
+            "extra": 0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0
+          },
+          "meterMatches": false
+        }
+      ],
+      "gate": {
+        "threshold": 0.995,
+        "passed": false
+      }
+    },
+    "challenge_corrected_native": {
+      "scope": "strict written notation at original part/bar/voice/onset; no bar alignment",
+      "events": {
+        "truth": 50,
+        "reading": 50,
+        "correct": 50,
+        "missing": 0,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "attackPitchDiagnostic": {
+        "truth": 37,
+        "reading": 37,
+        "correct": 37,
+        "missing": 0,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "rests": {
+        "truth": 12,
+        "reading": 12,
+        "correct": 12,
+        "missing": 0,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "graces": {
+        "truth": 1,
+        "reading": 1,
+        "correct": 1,
+        "missing": 0,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "truthMeasuresByPart": [
+        21
+      ],
+      "readingMeasuresByPart": [
+        21
+      ],
+      "structureMatches": true,
+      "meterMatches": true,
+      "formMatches": true,
+      "truthHasTempo": true,
+      "tempoMatches": false,
+      "unobservableInPdf": {
+        "truthHiddenEvents": 0,
+        "readingHiddenEvents": 0,
+        "truthPlaybackOnlyTempos": 0,
+        "readingPlaybackOnlyTempos": 0
+      },
+      "exactBars": 21,
+      "totalBars": 21,
+      "barErrors": [],
+      "gate": {
+        "threshold": 0.995,
+        "passed": false
+      }
+    },
+    "challenge_corrected_browser_jspi": {
+      "scope": "strict written notation at original part/bar/voice/onset; no bar alignment",
+      "events": {
+        "truth": 50,
+        "reading": 50,
+        "correct": 50,
+        "missing": 0,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "attackPitchDiagnostic": {
+        "truth": 37,
+        "reading": 37,
+        "correct": 37,
+        "missing": 0,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "rests": {
+        "truth": 12,
+        "reading": 12,
+        "correct": 12,
+        "missing": 0,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "graces": {
+        "truth": 1,
+        "reading": 1,
+        "correct": 1,
+        "missing": 0,
+        "extra": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "truthMeasuresByPart": [
+        21
+      ],
+      "readingMeasuresByPart": [
+        21
+      ],
+      "structureMatches": true,
+      "meterMatches": true,
+      "formMatches": true,
+      "truthHasTempo": true,
+      "tempoMatches": true,
+      "unobservableInPdf": {
+        "truthHiddenEvents": 0,
+        "readingHiddenEvents": 0,
+        "truthPlaybackOnlyTempos": 0,
+        "readingPlaybackOnlyTempos": 0
+      },
+      "exactBars": 21,
+      "totalBars": 21,
+      "barErrors": [],
+      "gate": {
+        "threshold": 0.995,
+        "passed": true
+      }
+    }
+  },
+  "representativeHoldoutQualification": "not yet established",
+  "verification": {
+    "pythonTests": 38,
+    "javascriptTests": 6,
+    "productionBuild": "passed",
+    "musicXml40Schema": "truth, corrected native and browser outputs passed",
+    "defaultBrowserSharedMemory": "public Bach sample fingerprint unchanged in Chrome; forced no-JSPI path; 165 notes",
+    "physicalIpad": "not tested"
+  }
+}

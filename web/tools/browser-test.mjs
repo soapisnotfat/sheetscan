@@ -6,6 +6,8 @@
 // --nojspi forces the shared-memory bridge which browsers without WebAssembly JSPI take.
 // Needs `npx playwright install <engine>`.
 import { createHash } from 'node:crypto'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 import * as playwright from 'playwright'
 
 // What the native pipeline reads on bench/sample/p1.png (it scores 1.000 against the truth).
@@ -14,17 +16,24 @@ const EXPECTED = '8e526eb7db347e574dc72023d8d870860dc7e9f28009072580106a14b48023
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'))
 const engine = args[0] ?? 'webkit'
 const url = args[1] ?? 'http://localhost:5173/'
-const browser = await playwright[engine].launch()
+const option = name => process.argv.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3)
+const input = option('input'), output = option('output')
+const browser = await playwright[engine].launch(engine === 'chromium' ? { channel: process.env.PLAYWRIGHT_CHANNEL || undefined } : {})
 const page = await browser.newPage()
 page.on('pageerror', (e) => console.log('page error:', e.message))
-await page.goto(url + (process.argv.includes('--nojspi') ? '?nojspi' : ''))
-console.log(engine, browser.version(), await page.evaluate(() => ({
+const target = new URL(url)
+if (process.argv.includes('--nojspi')) target.searchParams.set('nojspi', '1')
+if (process.argv.includes('--printed-tuplets')) target.searchParams.set('printed-tuplets', '1')
+await page.goto(target.href)
+const features = await page.evaluate(() => ({
   jspi: typeof WebAssembly.Suspending === 'function',
   isolated: crossOriginIsolated,
   memory: navigator.deviceMemory,
-})))
+}))
+console.log(engine, browser.version(), features)
 
-await page.click('#sample')
+if (input) await page.setInputFiles('#files', resolve(input))
+else await page.click('#sample')
 const started = Date.now()
 let last = ''
 for (;;) {
@@ -42,14 +51,35 @@ for (;;) {
     break
   }
   if (state.view === 'work' && state.xml) {
+    if (output) {
+      await mkdir(dirname(resolve(output)), { recursive: true })
+      await writeFile(output, state.xml)
+      const rasters = await page.evaluate(async () => Promise.all([...document.querySelectorAll('#scan .page > img')].map(async img => ({
+        width: img.naturalWidth, height: img.naturalHeight,
+        bytes: [...new Uint8Array(await (await fetch(img.src)).arrayBuffer())],
+      }))))
+      const inputs = []
+      for (let i = 0; i < rasters.length; i++) {
+        const raster = rasters[i], bytes = Buffer.from(raster.bytes), path = `${resolve(output)}.page-${i+1}.png`
+        await writeFile(path, bytes)
+        inputs.push({ page: i+1, width: raster.width, height: raster.height, png: path, sha256: createHash('sha256').update(bytes).digest('hex') })
+      }
+      await writeFile(`${resolve(output)}.browser-run.json`, JSON.stringify({
+        sourceUrl: target.href, browser: browser.version(), features, bridge: state.bridge,
+        milliseconds: Date.now()-started,
+        originalInput: input ? { file: resolve(input), sha256: createHash('sha256').update(await readFile(resolve(input))).digest('hex') } : null,
+        rasters: inputs, outputSha256: createHash('sha256').update(state.xml).digest('hex'),
+        harnessSha256: createHash('sha256').update(await readFile(new URL(import.meta.url))).digest('hex'),
+      }, null, 2)+'\n')
+    }
     // The same fingerprint bench computes: every note's pitch and duration, in order.
     const notes = [...state.xml.matchAll(/<note[\s\S]*?<\/note>/g)].map(([note]) => {
       const tag = (name) => note.match(new RegExp(`<${name}>([^<]*)</${name}>`))?.[1]
       return `${note.includes('<pitch>') ? tag('step') + (tag('alter') ?? '') + tag('octave') : 'r'}:${tag('duration')}`
     })
     const hash = createHash('sha256').update(notes.join(',')).digest('hex')
-    console.log(`${notes.length} notes via ${state.bridge} in ${Math.round((Date.now() - started) / 1000)}s:`, hash === EXPECTED ? 'identical to the native reading' : `DIFFERENT (${hash})`)
-    if (hash !== EXPECTED) process.exitCode = 1
+    console.log(`${notes.length} notes via ${state.bridge} in ${Math.round((Date.now() - started) / 1000)}s:`, input ? `converted ${input}; evaluate against independent ground truth` : hash === EXPECTED ? 'identical to the native reading' : `DIFFERENT (${hash})`)
+    if (!input && hash !== EXPECTED) process.exitCode = 1
     break
   }
   if (Date.now() - started > 15 * 60_000) {

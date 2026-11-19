@@ -1,0 +1,1 @@
+Original public regression fixtures authored for Sheetscan. No external score source or evaluation GT was copied. MusicXML explicitly contains each resting measure; a printed multiple-rest group never spans a key/time/clef change. Both files encode counts 2,3,4,5,8,11,17 under changing meters, keys and clefs. Files may be used under CC0-1.0.

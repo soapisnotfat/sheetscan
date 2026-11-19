@@ -1,0 +1,248 @@
+{
+  "version": "browser-runtime-1",
+  "description": "Same bytes and model versions as the accepted v13 recognizer, served as same-origin static files. Binaries are downloaded and verified at build time, never committed.",
+  "assets": [
+    {
+      "path": "ort/ort.wasm.min.mjs",
+      "url": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort.wasm.min.mjs",
+      "group": "ort",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/onnxruntime/tree/v1.31.1",
+      "sha256": "c21d9c326d453a4a61398270c804d5979e118540597cb0c07f7b3d64e6098234",
+      "bytes": 53725
+    },
+    {
+      "path": "ort/ort-wasm-simd-threaded.mjs",
+      "url": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort-wasm-simd-threaded.mjs",
+      "group": "ort",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/onnxruntime/tree/v1.31.1",
+      "sha256": "30ed0b5cd1182ede931fea448afb567d4dc705ec957af09f108a2be5f770dac3",
+      "bytes": 24738
+    },
+    {
+      "path": "ort/ort-wasm-simd-threaded.wasm",
+      "url": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort-wasm-simd-threaded.wasm",
+      "group": "ort",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/onnxruntime/tree/v1.31.1",
+      "sha256": "4b884c203b0fa48d057be3332c65513ff85aa3c5bddd6946acc0fab7ecda001d",
+      "bytes": 14848852
+    },
+    {
+      "path": "pyodide/pyodide.mjs",
+      "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.mjs",
+      "group": "python",
+      "source": "https://github.com/pyodide/pyodide/tree/314.0.7",
+      "sha256": "6f1d60f7bf529beb300f0f47983c921d3982363640ba20af0e38efdddbc66109",
+      "bytes": 17931,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
+    },
+    {
+      "path": "pyodide/pyodide.asm.mjs",
+      "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.asm.mjs",
+      "group": "python",
+      "source": "https://github.com/pyodide/pyodide/tree/314.0.7",
+      "sha256": "f7cdc8ece80678ceb712f8e65ebe6d3a83203a180c399865f49612a051693635",
+      "bytes": 1250344,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
+    },
+    {
+      "path": "pyodide/pyodide.asm.wasm",
+      "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.asm.wasm",
+      "group": "python",
+      "source": "https://github.com/pyodide/pyodide/tree/314.0.7",
+      "sha256": "cc36e3cab04fdfc9a63ff13eb52eae2b911bf46c025cc7b281f394bd3de1d5e6",
+      "bytes": 9598218,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
+    },
+    {
+      "path": "pyodide/python_stdlib.zip",
+      "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/python_stdlib.zip",
+      "group": "python",
+      "source": "https://github.com/python/cpython/tree/v3.14.2",
+      "sha256": "fa1957e5777068fc4f7437f96d860ae2fbe9c19732ba06c84e004ec16dd7dd7a",
+      "bytes": 2545637,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms.",
+      "license": "Python-2.0"
+    },
+    {
+      "path": "pyodide/pyodide-lock.json",
+      "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide-lock.json",
+      "group": "python",
+      "source": "https://github.com/pyodide/pyodide/tree/314.0.7",
+      "sha256": "5dc2fc119108bc148c7457dc86e7675b5c87e1cafd420b9c34c1eaef7b36c010",
+      "bytes": 119077,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
+    },
+    {
+      "path": "pyodide/numpy-2.4.6-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
+      "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/numpy-2.4.6-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
+      "group": "python",
+      "sha256": "a292c1f5d7d8a2208cd5e94fc467604c131cabcd2fc14fed6eefde121e7fabdf",
+      "bytes": 2960568,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
+    },
+    {
+      "path": "pyodide/opencv_python-4.11.0.86-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
+      "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/opencv_python-4.11.0.86-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
+      "group": "python",
+      "sha256": "469a8ba6758ec4e0bce12436da977a1db3a953e320927c3f55ca6233a5d20acf",
+      "bytes": 10675764,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
+    },
+    {
+      "path": "pyodide/pillow-12.2.0-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
+      "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pillow-12.2.0-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
+      "group": "python",
+      "sha256": "e29838b7a756e4ee0f27a9cfa9a387ee0dfa2e9dd44be2dd595130b9f9d93ac3",
+      "bytes": 1037806,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
+    },
+    {
+      "path": "pyodide/typing_extensions-4.15.0-py3-none-any.whl",
+      "url": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/typing_extensions-4.15.0-py3-none-any.whl",
+      "group": "python",
+      "sha256": "4fec68770a05408e668a4fa53d6bf4f0f684b9dacf820c7c5d6e97d3ad225e29",
+      "bytes": 44613,
+      "notices": "runtime-notices.txt includes CPython, Pyodide and the original wheel licenses; components keep their own terms."
+    },
+    {
+      "path": "tesseract/tesseract.esm.min.js",
+      "url": "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.esm.min.js",
+      "group": "ocr",
+      "license": "Apache-2.0",
+      "source": "https://github.com/naptha/tesseract.js/tree/v7.0.0",
+      "sha256": "64871d76c75609fd5413b88a8171e2ef40deedd77d5875ba23df104b2d05eb29",
+      "bytes": 63220
+    },
+    {
+      "path": "tesseract/worker.min.js",
+      "url": "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/worker.min.js",
+      "group": "ocr",
+      "license": "Apache-2.0",
+      "source": "https://github.com/naptha/tesseract.js/tree/v7.0.0",
+      "sha256": "576b7df7e3393e137e51849357c9adb53fe7ac1bb69bfa06cf3d61520f182c6d",
+      "bytes": 111307
+    },
+    {
+      "path": "tesseract/tesseract.min.js.LICENSE.txt",
+      "url": "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js.LICENSE.txt",
+      "group": "ocr",
+      "license": "Apache-2.0",
+      "source": "https://github.com/naptha/tesseract.js/tree/v7.0.0",
+      "sha256": "cdf963ced7d25a0f98901a547647b4d6e2dbe0197fd78c87a059a87b0e542fe2",
+      "bytes": 149
+    },
+    {
+      "path": "tesseract/worker.min.js.LICENSE.txt",
+      "url": "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/worker.min.js.LICENSE.txt",
+      "group": "ocr",
+      "license": "Apache-2.0",
+      "source": "https://github.com/naptha/tesseract.js/tree/v7.0.0",
+      "sha256": "45f54171aeaa1d10c0c1a66f374b7bba1f02472b1487fbe892eec04f840002ac",
+      "bytes": 466
+    },
+    {
+      "path": "tesseract/core/tesseract-core-lstm.wasm.js",
+      "url": "https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core-lstm.wasm.js",
+      "group": "ocr",
+      "license": "Apache-2.0",
+      "source": "https://github.com/naptha/tesseract.js-core/tree/v7.0.0",
+      "sha256": "eef5f8b2f8e20e150680b20adaec4a60babafee3adbe8a94583c81fee46e8680",
+      "bytes": 3896484
+    },
+    {
+      "path": "tesseract/core/tesseract-core-simd-lstm.wasm.js",
+      "url": "https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core-simd-lstm.wasm.js",
+      "group": "ocr",
+      "license": "Apache-2.0",
+      "source": "https://github.com/naptha/tesseract.js-core/tree/v7.0.0",
+      "sha256": "c58b46a4c796c0b8afccf77591d5b875b6896b45d402bbce8caa6f5362447b38",
+      "bytes": 3899472
+    },
+    {
+      "path": "tesseract/core/tesseract-core-relaxedsimd-lstm.wasm.js",
+      "url": "https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core-relaxedsimd-lstm.wasm.js",
+      "group": "ocr",
+      "license": "Apache-2.0",
+      "source": "https://github.com/naptha/tesseract.js-core/tree/v7.0.0",
+      "sha256": "861a536cf9ef8e63cb644d57bab39c388f37f7d6b6f60024b741c5f6b39a59b3",
+      "bytes": 3905767
+    },
+    {
+      "path": "tesseract/lang/eng.traineddata.gz",
+      "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int/eng.traineddata.gz",
+      "group": "ocr",
+      "license": "Apache-2.0",
+      "source": "https://github.com/naptha/tessdata",
+      "sha256": "45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91",
+      "bytes": 2952873
+    },
+    {
+      "path": "tesseract/lang/deu.traineddata.gz",
+      "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/deu@1.0.0/4.0.0_best_int/deu.traineddata.gz",
+      "group": "ocr",
+      "license": "Apache-2.0",
+      "source": "https://github.com/naptha/tessdata",
+      "sha256": "306c4280d0cbed46fbff727486bd43b92730181bae80f56941a091f363bdf28b",
+      "bytes": 1333102
+    },
+    {
+      "path": "ort/LICENSE",
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.1/LICENSE",
+      "group": "notice",
+      "license": "MIT",
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+      "bytes": 1073
+    },
+    {
+      "path": "tesseract/LICENSE.md",
+      "url": "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/LICENSE.md",
+      "group": "notice",
+      "license": "Apache-2.0",
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+      "bytes": 11357
+    },
+    {
+      "path": "tesseract/core/LICENSE",
+      "url": "https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/LICENSE",
+      "group": "notice",
+      "license": "Apache-2.0",
+      "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08",
+      "bytes": 11358
+    },
+    {
+      "path": "pyodide/LICENSE",
+      "url": "https://raw.githubusercontent.com/pyodide/pyodide/314.0.7/LICENSE",
+      "group": "notice",
+      "license": "MPL-2.0",
+      "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
+      "bytes": 16725
+    },
+    {
+      "path": "tesseract/lang/LICENSE",
+      "url": "https://raw.githubusercontent.com/tesseract-ocr/tessdata/main/LICENSE",
+      "group": "notice",
+      "license": "Apache-2.0",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "bytes": 11358
+    },
+    {
+      "path": "python/LICENSE",
+      "url": "https://raw.githubusercontent.com/python/cpython/v3.14.2/LICENSE",
+      "group": "notice",
+      "license": "Python-2.0",
+      "sha256": "b0e25a78cffb43f4d92de8b61ccfa1f1f98ecbc22330b54b5251e7b6ba010231",
+      "bytes": 13804
+    },
+    {
+      "path": "ort/ThirdPartyNotices.txt",
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.1/ThirdPartyNotices.txt",
+      "group": "notice",
+      "license": "See component notices",
+      "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
+      "bytes": 338088
+    }
+  ]
+}
