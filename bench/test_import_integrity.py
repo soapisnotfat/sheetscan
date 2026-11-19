@@ -23,6 +23,21 @@ def score(parts=1, notes=1):
 
 
 class IntegrityTests(unittest.TestCase):
+    def test_octave_clef_ignores_the_measure_number_at_system_start(self):
+        staff = Obj(grid=[Obj(x=24, y=[64, 80, 96, 112, 128])])
+        for name, x, expected in (('measure number', 30, 'C4'), ('clef digit', 67, 'C5')):
+            with self.subTest(name=name):
+                image = np.full((144, 128), 255, dtype=np.uint8)
+                # Two counters in one printed digit. The measure number has the
+                # same shape and height as the digit over the upper clef loop.
+                image[25:47, x-5:x+6] = 0
+                image[28:33, x-2:x+3] = 255
+                image[37:43, x-3:x+4] = 255
+                clef = Obj(rhythm='clef_G2', position='upper')
+                note = Obj(rhythm='note_quarter', pitch='C4', position='upper')
+                pipeline._mark_octave_clefs(image, staff, [clef, note], {})
+                self.assertEqual(note.pitch, expected)
+
     def test_split_opening_attributes_do_not_duplicate_the_clef(self):
         fixture = Path(__file__).parent / 'fixtures/opening-clef-split-attributes.musicxml'
         root = ET.parse(fixture).getroot()

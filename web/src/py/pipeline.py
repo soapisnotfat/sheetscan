@@ -594,7 +594,9 @@ def _mark_octave_clefs(image, staff, symbols, carried):
             limit = point.y[5] - unit if k == 0 and len(point.y) > 5 else image.shape[0]
             left, right = x - 2.5 * unit, x + 2.5 * unit
             down = _has_eight_below(image, left, right, lines, limit, sign == "F")
-            up = sign == "G" and _has_eight_above(image, left, right, lines)
+            # At a system start, bar numbers are printed left of the clef.
+            upper_left = left if change else point.x + 1.15 * unit
+            up = sign == "G" and _has_eight_above(image, upper_left, right, lines)
             shift = int(up) - int(down)
             if not up and not down and name not in started and carried.get(name) == (-1, sign):
                 shift = -1
