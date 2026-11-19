@@ -10,6 +10,7 @@ import re
 import sys
 import types
 import xml.etree.ElementTree as ET
+from bisect import bisect_left, bisect_right
 from fractions import Fraction
 
 import cv2
@@ -19,7 +20,7 @@ from printed_tuplets import read_tuplet_marks, tuplet_candidates, apply_tuplet
 from accidental_glyphs import read_accidentals
 from beam_evidence import read_beam_groups
 from source_beams import apply_source_beams
-from source_curves import read_grace_slur
+from source_curves import read_grace_slur, read_ordinary_curve
 from staff_coverage import choose_staff_region
 import source_rhythm
 
@@ -757,49 +758,97 @@ def _staff_boxes(rows, to_input):
     return boxes
 
 
-def _generate_xml_with_source_curves(voices, image, boxes, stable_heads):
-    """Keep a decoded grace slur when the source supports its outer endpoints."""
+def _generate_xml_with_source_curves(voices, image, boxes, stable_heads, raw_heads):
+    """Use source curves to resolve ties between adjacent single-note events."""
     head_lookup = {}
     for x, y in stable_heads:
         head_lookup.setdefault((round(x), round(y)), []).append((x, y))
+    source_heads = sorted(tuple(head['center']) for head in raw_heads)
     original_tie_event = music_xml_generator.tie_event
-    changes = []
+    grace_slurs, ordinary_curves = [], []
 
-    def anchored_point(note):
+    def point(note):
         match = re.search(r'-p(\d+)-(\d+)-(\d+)$', note.get('id', ''))
         if match:
             page, x, y = map(int, match.groups())
-            points = head_lookup.get((x, y), [])
-            if page == _page and len(points) == 1:
-                return points[0]
+            if page == _page:
+                return x, y
         return None
 
-    def grace_slur(start, stop):
-        if start.find('grace') is None or stop.find('grace') is not None:
+    def anchor(hint, unit, decoded_slur):
+        matched = head_lookup.get(hint, [])
+        if len(matched) == 1:
+            return matched[0]
+        if matched:
             return None
+        x, y = hint
+        # When the decoder already linked both notes, its attention can sit on
+        # the stems. The segmented heads and the outer curve must still agree.
+        horizontal, vertical = (.70, .88) if decoded_slur else (.40, .32)
+        first = bisect_left(source_heads, x - horizontal * unit, key=lambda head: head[0])
+        last = bisect_right(source_heads, x + horizontal * unit, key=lambda head: head[0])
+        nearby = [head for head in source_heads[first:last] if abs(head[1] - y) <= vertical * unit]
+        return nearby[0] if len(nearby) == 1 else None
+
+    def curve_between(start, stop, reader, ordinary=False, decoded_slur=False):
         pitch = music_xml_generator.get_note_pitch(start)
-        if (pitch is None or pitch != music_xml_generator.get_note_pitch(stop)
-                or not music_xml_generator.get_slur(start, 'start')
-                or not music_xml_generator.get_slur(stop, 'stop')):
+        if pitch is None or pitch != music_xml_generator.get_note_pitch(stop):
             return None
-        a, b = anchored_point(start), anchored_point(stop)
+        a, b = point(start), point(stop)
         if a is None or b is None:
             return None
-        units = []
+        if not ordinary:
+            start_heads, stop_heads = head_lookup.get(a, []), head_lookup.get(b, [])
+            if len(start_heads) != 1 or len(stop_heads) != 1:
+                return None
+            a, b = start_heads[0], stop_heads[0]
+        staffs = []
         for left, top, right, bottom, _ in boxes:
             unit = (bottom - top) / 4
             if (left <= a[0] < b[0] <= right
                     and top - 2 * unit <= min(a[1], b[1]) <= max(a[1], b[1]) <= bottom + 2 * unit):
-                units.append(unit)
-        return read_grace_slur(image, a, b, units[0]) if len(units) == 1 else None
+                staffs.append(unit)
+        if len(staffs) != 1:
+            return None
+        unit = staffs[0]
+        start_head, stop_head = (anchor(a, unit, decoded_slur), anchor(b, unit, decoded_slur)) if ordinary else (a, b)
+        if start_head is None or stop_head is None:
+            return None
+        evidence = reader(image, start_head, stop_head, unit)
+        if evidence is not None and ordinary:
+            evidence['heads'] = [[round(v, 2) for v in head] for head in (start_head, stop_head)]
+        return evidence
+
+    def add_tie(start, stop):
+        for note, kind in ((start, 'start'), (stop, 'stop')):
+            notation = note.find('notations')
+            if notation is None:
+                notation = ET.SubElement(note, 'notations')
+            music_xml_generator.add_tie(note, kind, notation)
 
     def tie_event(before, after):
         if len(before) == len(after) == 1:
             start, stop = before[0], after[0]
-            evidence = grace_slur(start, stop)
-            if evidence is not None:
-                changes.append(dict(start=start.get('id'), stop=stop.get('id'), **evidence))
-                return
+            begins = music_xml_generator.get_slur(start, 'start')
+            ends = music_xml_generator.get_slur(stop, 'stop')
+            starts_grace = start.find('grace') is not None
+            if stop.find('grace') is None:
+                if starts_grace and begins and ends:
+                    evidence = curve_between(start, stop, read_grace_slur)
+                    if evidence is not None:
+                        grace_slurs.append(dict(start=start.get('id'), stop=stop.get('id'), **evidence))
+                        return
+                if (not starts_grace and bool(begins) == bool(ends)
+                        and start.get('print-object') != 'no' and stop.get('print-object') != 'no'):
+                    evidence = curve_between(start, stop, read_ordinary_curve, ordinary=True, decoded_slur=bool(begins))
+                    if evidence and evidence['curve'] == 'slur' and begins and ends:
+                        ordinary_curves.append(dict(start=start.get('id'), stop=stop.get('id'), **evidence))
+                        return
+                    if (evidence and evidence['curve'] == 'tie' and not begins and not ends
+                            and start.find("tie[@type='start']") is None and stop.find("tie[@type='stop']") is None):
+                        add_tie(start, stop)
+                        ordinary_curves.append(dict(start=start.get('id'), stop=stop.get('id'), **evidence))
+                        return
         original_tie_event(before, after)
 
     music_xml_generator.tie_event = tie_event
@@ -807,7 +856,7 @@ def _generate_xml_with_source_curves(voices, image, boxes, stable_heads):
         xml = music_xml_generator.generate_xml(XmlGeneratorArguments(False, None, None), voices, "")
     finally:
         music_xml_generator.tie_event = original_tie_event
-    return xml, changes
+    return xml, grace_slurs, ordinary_curves
 
 
 def _read_page(path):
@@ -850,14 +899,15 @@ def _read_page(path):
                     note[key] = [round(float(v), 2) for v in to_input(note[key])]
     boxes = _staff_boxes(rows, to_input)
     stable = [note['head'] for record in _coordinate_audit for note in record['notes']]
-    xml, grace_slurs = _generate_xml_with_source_curves(voices, original, boxes, stable)
-    layout_changes = _remove_repeat_layout_placeholders(xml)
     gray = cv2.cvtColor(original, cv2.COLOR_BGR2GRAY)
     if source_context is None:
         beam_boxes, _, _, beam_grids, beam_heads = source_rhythm.source_geometry(rows, _raw_heads, to_input)
         beam_groups = read_beam_groups(gray, beam_grids, beam_heads)
     else:
         beam_boxes, beam_groups = source_context['boxes'], source_context['beams']
+        beam_heads = source_context['rawHeads']
+    xml, grace_slurs, ordinary_curves = _generate_xml_with_source_curves(voices, original, boxes, stable, beam_heads)
+    layout_changes = _remove_repeat_layout_placeholders(xml)
     beam_changes = apply_source_beams(xml, _page, beam_groups, beam_boxes, gray < 160)
     note_points = []
     for note in xml.findall('.//note'):
@@ -923,6 +973,7 @@ def _read_page(path):
                           'layoutChanges': layout_changes,
                           'coordinateChanges': _coordinate_audit,
                           'graceSlurChanges': grace_slurs,
+                          'ordinaryCurveChanges': ordinary_curves,
                           'staffCoverageChanges': _coverage_audit,
                           'sourceRhythmChanges': source_context['changes'] if source_context else [],
                           'sourceRhythmDiagnostics': source_context['diagnostics'] if source_context else [],
@@ -1165,6 +1216,7 @@ def scan(paths, progress=lambda done, total: None, number_reader=None, printed_t
     numeric_audit['sourceRhythmDiagnostics'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('sourceRhythmDiagnostics', [])]
     numeric_audit['coordinateChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('coordinateChanges', [])]
     numeric_audit['graceSlurChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source['graceSlurChanges']]
+    numeric_audit['ordinaryCurveChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source['ordinaryCurveChanges']]
     numeric_audit['sourceBeamChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source['sourceBeamChanges']]
     numeric_audit['staffCoverageChanges'] = [{'page': source['page'], **change} for source in _page_sources for change in source.get('staffCoverageChanges', [])]
     numeric_audit['repeatLocationChanges'] = _repair_forward_repeat_locations(merged)

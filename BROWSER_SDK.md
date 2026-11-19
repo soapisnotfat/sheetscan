@@ -21,6 +21,8 @@ The `v17-source-beams` SDK writes numbered MusicXML beams when a visible stem-to
 
 The `v18-source-headers` SDK reads an octave 8 above a treble clef from the two holes in the printed digit. It writes the clef shift and corresponding pitches, and checks a newly printed treble clef for its own octave mark. A page-opening repeat can flush attributes into an empty measure in the decoder export. The exporter attaches that header to the first musical bar and records the removal in `result.audit.layoutChanges`.
 
+The `v19-source-curves` SDK recovers a missing tie when an isolated inner curve joins two verified adjacent notes of the same written pitch. It preserves a decoded slur when the raster shows a separate, higher curve reaching the noteheads. Each decision records the paired note IDs, source notehead locations and curve box in `result.audit.ordinaryCurveChanges`.
+
 Host the **whole** SDK directory under the app's origin, preserving `assets/` and `models/`. Recognition workers are module workers. Runtime dependencies download from pinned public CDNs; input scores are processed locally and are not uploaded.
 
 ```js

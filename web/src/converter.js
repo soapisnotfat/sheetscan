@@ -6,8 +6,8 @@ import { createResourceClient } from './resources.js'
 import { annotate, tokens } from './annotate.js'
 import { prepareMetadata } from './metadata.js'
 
-export const RECOGNIZER_VERSION = 'v18-source-headers'
-export const SDK_VERSION = 'v18-source-headers'
+export const RECOGNIZER_VERSION = 'v19-source-curves'
+export const SDK_VERSION = 'v19-source-curves'
 
 export function capabilities() {
   const jspi = typeof WebAssembly.Suspending === 'function'
